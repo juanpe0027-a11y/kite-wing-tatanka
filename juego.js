@@ -64,9 +64,9 @@ const body = new T.Group(); inner.add(body);
 const GEAR = { kb: 'lima', fb: 'turquesa' };
 try { Object.assign(GEAR, JSON.parse(localStorage.getItem('kite-gear') || '{}')); } catch (e) {}
 const KITE_BOARDS = {
-  lima: { name: 'Negra', sub: 'Línea verde lima', sw: '#121314' },
-  roja: { name: 'Roja', sub: 'Franjas blancas', sw: '#d9302c' },
-  blanca: { name: 'Blanca', sub: 'Franja turquesa', sw: '#eeeeea' },
+  lima: { name: 'Negra', sub: 'Línea verde lima', sw: 'linear-gradient(90deg,#121314 0 60%,#c3f53a 60% 66%,#121314 66%)' },
+  roja: { name: 'Roja', sub: 'Franjas blancas', sw: 'linear-gradient(110deg,#d9302c 0 30%,#fff 30% 34%,#d9302c 34% 38%,#fff 38% 42%,#d9302c 42%)' },
+  blanca: { name: 'Blanca', sub: 'Franja turquesa', sw: 'linear-gradient(180deg,#eeeeea 0 40%,#1fb3c8 40% 60%,#eeeeea 60%)' },
 };
 if (!KITE_BOARDS[GEAR.kb]) GEAR.kb = 'lima';
 function makeKiteBoard(id) {
@@ -86,8 +86,8 @@ function makeKiteBoard(id) {
 }
 let kiteBoard = makeKiteBoard(GEAR.kb);
 const FOIL_BOARDS = {
-  turquesa: { name: 'Turquesa', sub: 'La de David', base: '#143f5c', sp: ['#1f7193', '#2f8fae', '#0f2c42', '#48b3cc', '#1a4d6b'], sw: '#1f7193' },
-  blanca: { name: 'Blanca', sub: 'Jaspeada gris', base: '#dfe3e0', sp: ['#b9c4c4', '#8fb7bf', '#f4f6f4', '#c9d3d2', '#9fc9d0'], sw: '#dfe3e0' },
+  turquesa: { name: 'Turquesa', sub: 'La de David', base: '#143f5c', sp: ['#1f7193', '#2f8fae', '#0f2c42', '#48b3cc', '#1a4d6b'], sw: 'repeating-linear-gradient(35deg,#143f5c 0 4px,#2f8fae 4px 6px,#0f2c42 6px 9px,#48b3cc 9px 10px)' },
+  blanca: { name: 'Blanca', sub: 'Jaspeada gris', base: '#dfe3e0', sp: ['#b9c4c4', '#8fb7bf', '#f4f6f4', '#c9d3d2', '#9fc9d0'], sw: 'repeating-linear-gradient(35deg,#dfe3e0 0 4px,#b9c4c4 4px 6px,#f4f6f4 6px 9px,#9fc9d0 9px 10px)' },
 };
 if (!FOIL_BOARDS[GEAR.fb]) GEAR.fb = 'turquesa';
 // la de foil, como la de David: corta y ancha, punta redondeada y cola recta, cantos y fondo azul turquesa
@@ -607,6 +607,7 @@ function land(surf) {
   if (A.grabT > 0.3) parts.push('Grab');
   const pts = Math.round(H * 40 + Math.abs(rollN) * 300 + Math.abs(spinN) * (step === Math.PI ? 150 : 300) + (A.loop ? 400 : 0) + (A.grabT > 0.3 ? 150 + A.grabT * 100 : 0));
   if (GAME.running) R.score += pts;
+  if (GAME.running && pts > (REC.bestTrickPts || 0)) { REC.bestTrickPts = pts; REC.bestTrick = parts.length ? parts.join(' + ') : 'Salto'; }
   say((parts.length ? parts.join(' + ') : (GAME.mode === 'kite' ? 'Salto' : 'Saltito')) + `<small>${H.toFixed(1)} M · +${pts}</small>`, 'clean', 1.8);
   sfxSplash(0.3 + H * 0.08);
   if (GAME.mode !== 'kite' && R.foilOn) R.foil = 1;
@@ -862,6 +863,13 @@ function drawMap() {
   const hu = -Math.sin(R.h), hv = Math.cos(R.h);
   g.save(); g.translate(u, v); g.rotate(Math.atan2(hv, hu));
   g.fillStyle = '#c6f432'; g.strokeStyle = '#0d1620'; g.lineWidth = 2; g.beginPath(); g.moveTo(11, 0); g.lineTo(-7, 6); g.lineTo(-4, 0); g.lineTo(-7, -6); g.closePath(); g.fill(); g.stroke(); g.restore();
+  // los demás de la sala: puntos naranjas con la inicial
+  for (const id in NET.peers) {
+    const P = NET.peers[id]; if (!P.st || !P.st.p || performance.now() - P.seen > 6000) continue;
+    let [pu, pv] = mp(P.st.x, P.st.z); pu = clamp(pu, 5, W - 5); pv = clamp(pv, 5, mapCv.height - 5);
+    g.fillStyle = '#ff9a3c'; g.strokeStyle = '#0d1620'; g.lineWidth = 2; g.beginPath(); g.arc(pu, pv, 5, 0, TAU); g.fill(); g.stroke();
+    g.fillStyle = '#fff'; g.font = '700 10px system-ui'; g.fillText((P.st.n || '?')[0].toUpperCase(), pu + 7, pv + 4);
+  }
   // flecha del viento (hacia dónde sopla)
   const wu = -WIND.D.z, wv = WIND.D.x;
   g.save(); g.translate(W - 26, 26); g.rotate(Math.atan2(wv, wu));
@@ -943,17 +951,17 @@ function setBoard(kind, id) {
 }
 for (const [box, kind, list] of [['kboards', 'k', KITE_BOARDS], ['fboards', 'f', FOIL_BOARDS]]) {
   for (const [id, d] of Object.entries(list)) {
-    const b = document.createElement('button'); b.className = 'opt' + (id === (kind === 'k' ? GEAR.kb : GEAR.fb) ? ' sel' : ''); b.dataset.b = id;
-    b.innerHTML = `<i class="sw" style="background:${d.sw}"></i><b>${d.name}</b><em>${d.sub}</em>`;
+    const b = document.createElement('button'); b.className = 'opt card' + (id === (kind === 'k' ? GEAR.kb : GEAR.fb) ? ' sel' : ''); b.dataset.b = id;
+    b.innerHTML = `<span class="swatch" style="background:${d.sw}"></span><b>${d.name}</b><em>${d.sub}</em>`;
     b.onclick = () => setBoard(kind, id); $(box).appendChild(b);
   }
 }
 // en el menú principal: con quién y con qué material sales
 function gearSum() {
-  if (!$('gearWho')) return;
-  $('gearAv').style.backgroundImage = `url(avatar-${RIDER_NAME}.jpg)`;
-  $('gearWho').textContent = RIDER_NAME === 'david' ? 'David' : 'JuanP';
-  $('gearSub').textContent = GAME.mode === 'kite' ? 'Tabla ' + KITE_BOARDS[GEAR.kb].name.toLowerCase() + ' · cometa Tatanka'
+  if (!$('riderName')) return;
+  $('avatar').style.backgroundImage = `url(avatar-${RIDER_NAME}.jpg)`;
+  $('riderName').textContent = RIDER_NAME === 'david' ? 'David' : 'JuanP';
+  $('riderSub').textContent = GAME.mode === 'kite' ? 'Tabla ' + KITE_BOARDS[GEAR.kb].name.toLowerCase() + ' · cometa Tatanka'
     : 'Foil ' + FOIL_BOARDS[GEAR.fb].name.toLowerCase() + ' · ala ' + WING_DESIGNS[WING.design].name.toLowerCase();
 }
 $('toGear').onclick = () => showPanel('pGear'); $('gearOk').onclick = () => showPanel('pMain');
@@ -971,11 +979,13 @@ function toOpenSea() {
   say('MAR ADENTRO<small>a 2,4 km de la playa</small>', 'info', 1.8);
 }
 $('bSea').onclick = toOpenSea;
-$('bMenu').onclick = () => { GAME.running = false; GAME.paused = false; $('hud').hidden = true; $('menu').hidden = false; showPanel('pMain'); msg(''); };
+$('bMenu').onclick = () => { try { recSave(); } catch (e) {} GAME.running = false; GAME.paused = false; $('hud').hidden = true; $('menu').hidden = false; showPanel('pMain'); msg(''); };
 $('go').onclick = () => {
   sfxInit(); if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume();
   $('menu').hidden = true; $('hud').hidden = false; GAME.running = true; GAME.paused = false;
   R.score = 0; CAM.off = null; CAM.h = R.h; setCam(CAM.mode); stickWords(); snapKite();
+  REC.lastScore = 0; REC.counted = false; REC.bestTrick = ''; REC.bestTrickPts = 0; REC.saveT = 10;
+  if (crewNear() > 300) toCrew(true);
   if (R.state === 'fallen') getUp();
   msg(MODES[GAME.mode].name + ' · VIENTO ' + WIND.name.toUpperCase() + ' ' + WIND.kn + ' KN', 2.2);
   const IS_IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -1001,6 +1011,7 @@ async function loadModels() {
   if (hj) RIDERS.juanp = hj; if (hd) RIDERS.david = hd;
   if (!RIDERS[RIDER_NAME]) RIDER_NAME = hj ? 'juanp' : 'david';
   setRider(RIDER_NAME);
+  $('go').disabled = !(hj || hd);
   $('loadLine').textContent = hj && hd ? '✅ JuanP y David listos' : hj || hd ? '⚠️ Solo ha cargado ' + (hj ? 'JuanP' : 'David') : '⚠️ No se han podido cargar los riders: recarga la página';
 }
 
@@ -1012,7 +1023,7 @@ async function loadModels() {
 const FIREBASE_CONFIG = { apiKey: 'AIzaSyBYEgJnEQxYbgT97giPRuTaRNd5d9vF8tg', authDomain: 'surf-sagunto.firebaseapp.com', databaseURL: 'https://surf-sagunto-default-rtdb.europe-west1.firebasedatabase.app', projectId: 'surf-sagunto', storageBucket: 'surf-sagunto.firebasestorage.app', messagingSenderId: '669179228796', appId: '1:669179228796:web:1e39377632d94fa1c50ff9' };
 const NET = { db: null, me: null, id: 'k' + Math.random().toString(36).slice(2, 10), peers: {}, connected: false, sendT: 0 };
 try { $('nick').value = localStorage.getItem('kite-nick') || ''; } catch (e) {}
-$('nick').addEventListener('change', () => { try { localStorage.setItem('kite-nick', $('nick').value.trim()); } catch (e) {} });
+$('nick').addEventListener('input', () => { try { localStorage.setItem('kite-nick', $('nick').value.trim()); } catch (e) {} });
 const myName = () => ($('nick').value.trim() || (RIDER_NAME === 'david' ? 'David' : 'JuanP')).slice(0, 16);
 function loadScript(src) { return new Promise((res, rej) => { const e = document.createElement('script'); e.src = src; e.onload = res; e.onerror = rej; document.head.appendChild(e); }); }
 (async function netStart() {
@@ -1023,6 +1034,8 @@ function loadScript(src) { return new Promise((res, rej) => { const e = document
     NET.base = NET.db.ref('salas/kite-wing-tatanka'); NET.me = NET.base.child('players/' + NET.id);
     NET.db.ref('.info/connected').on('value', v => { NET.connected = !!v.val(); if (NET.connected) { NET.me.onDisconnect().remove(); NET.sendT = 0; } netMenu(); });
     const pl = NET.base.child('players');
+    NET.base.child('msgs').orderByChild('at').startAt(Date.now() - 5000).on('child_added', v => onVoice(v.val()));
+    recLoad();
     pl.on('child_added', v => peerData(v.key, v.val())); pl.on('child_changed', v => peerData(v.key, v.val())); pl.on('child_removed', v => peerGone(v.key));
     addEventListener('pagehide', () => { try { NET.me.remove(); } catch (e) {} });
     mp.textContent = '🌊 Conectando a la sala…';
@@ -1047,12 +1060,14 @@ function netMenu() {
 const nt = { p: V3(), q: new T.Quaternion() };
 function netSend(dt) {
   if (!NET.connected || !NET.me) return;
+  if (GAME.running) recTick(dt);
   NET.sendT -= dt; if (NET.sendT > 0) return; NET.sendT = 0.12;
   const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
   inner.getWorldPosition(nt.p); inner.getWorldQuaternion(nt.q);
   const st = {
     n: myName(), m: GAME.mode, kb: GEAR.kb, fb: GEAR.fb, w: WING.design, p: GAME.running ? 1 : 0, sc: R.score,
     x: r2(nt.p.x), y: r2(nt.p.y), z: r2(nt.p.z), q: [r3(nt.q.x), r3(nt.q.y), r3(nt.q.z), r3(nt.q.w)],
+    t: Math.round(Date.now() / 500),   // cambia siempre: así los demás saben que sigues ahí aunque estés quieto
     yw: r2(R.yaw), pw: r2(R.power), v: r2(R.v), c: r2(R.charge), s: R.state === 'air' ? 1 : R.state === 'fallen' ? 2 : 0,
   };
   if (GAME.mode === 'kite') { const k = KITE.pos, q = KITE.g.quaternion; st.k = [r2(k.x), r2(k.y), r2(k.z)]; st.kq = [r3(q.x), r3(q.y), r3(q.z), r3(q.w)]; }
@@ -1124,6 +1139,115 @@ function updatePeers(dt, t) {
     V.label.position.set(P.pos.x, P.pos.y + 2.6, P.pos.z);
   }
 }
+
+// ---- IR CON LOS DEMÁS: el mundo es grande; el botón 👥 (o la J) te pone a navegar junto a alguien de la sala
+function crewList() { return Object.values(NET.peers).filter(P => P.st && P.st.p && performance.now() - P.seen < 6000); }
+function crewNear() { const l = crewList(); return l.length ? Math.min(...l.map(P => Math.hypot(P.st.x - R.x, P.st.z - R.z))) : 0; }
+function toCrew(quiet) {
+  const l = crewList();
+  if (!l.length) { if (!quiet) say('NO HAY NADIE MÁS<small>pasa el enlace y entrad a la vez</small>', 'info', 2); return; }
+  NET.crewI = ((NET.crewI || 0) + 1) % l.length;
+  const P = l[NET.crewI], F = WIND.F, phi = Math.atan2(F.z, F.x);
+  R.x = P.st.x + WIND.D.x * -25 + WIND.E0.x * 12; R.z = P.st.z + WIND.D.z * -25 + WIND.E0.z * 12;
+  if (solidAt(R.x, R.z, GAME.mode)) { R.x = P.st.x; R.z = P.st.z - 20; }
+  R.y = 0; R.vy = 0; R.air = null; R.state = 'ride'; R.v = Math.max(R.v, 5); R.charge = 0; R.gybe = 0;
+  R.h = phi + R.s * 100 * DEG; R.yr = 0; R.turn = 0; trick.rotation.set(0, 0, 0);
+  trail.pts.length = 0; CAM.off = CAM.lookOff = null; CAM.h = R.h; snapKite(); KITE.prev = null;
+  say('CON ' + esc(P.st.n || 'RIDER').toUpperCase() + '<small>navegáis juntos</small>', 'info', 1.8);
+}
+$('bCrew').onclick = () => toCrew(false);
+addEventListener('keydown', e => { if (e.code === 'KeyJ' && GAME.running) toCrew(false); });
+
+// ---- RÉCORDS: se guardan en la sala «kite-wing-records» (uno por móvil, sin cuenta) y salen en el menú
+const REC = { dev: (() => { try { let d = localStorage.getItem('kite-dev'); if (!d) { d = 'd' + Math.random().toString(36).slice(2, 12); localStorage.setItem('kite-dev', d); } return d; } catch (e) { return 'd' + Math.random().toString(36).slice(2, 12); } })(),
+  data: null, saveT: 10, lastScore: 0, bestTrick: '', bestTrickPts: 0 };
+function recLoad() {
+  const ref = NET.db.ref('salas/kite-wing-records/players');
+  ref.child(REC.dev).once('value', v => { REC.data = (v.val() && v.val().st) || null; recShow(); });
+  ref.on('value', v => { REC.all = v.val() || {}; recShow(); });
+}
+function recSave() {
+  if (!NET.db || !GAME.running) return;
+  const d = REC.data || { best: 0, total: 0, bt: '', btp: 0, ses: 0 };
+  const add = Math.max(0, R.score - REC.lastScore); REC.lastScore = R.score;
+  const n = { nm: myName(), best: Math.max(d.best || 0, R.score), total: (d.total || 0) + add, ses: d.ses || 0,
+    bt: REC.bestTrickPts > (d.btp || 0) ? REC.bestTrick : (d.bt || ''), btp: Math.max(d.btp || 0, REC.bestTrickPts), r: RIDER_NAME, m: GAME.mode, at: Date.now() };
+  if (!REC.counted) { REC.counted = true; n.ses = (d.ses || 0) + 1; }
+  REC.data = n;
+  NET.db.ref('salas/kite-wing-records/players/' + REC.dev).set({ ch: n.nm.slice(0, 19), st: n }).catch(() => {});
+}
+function recTick(dt) { REC.saveT -= dt; if (REC.saveT <= 0) { REC.saveT = 10; recSave(); } }
+addEventListener('pagehide', () => { try { recSave(); } catch (e) {} });
+document.addEventListener('visibilitychange', () => { if (document.hidden) try { recSave(); } catch (e) {} });
+$('toStats').onclick = () => { showPanel('pStats'); recShow(); };
+$('statsOk').onclick = () => showPanel('pMain');
+function recShow() {
+  const d = REC.data, fmt = v => (v || 0).toLocaleString('es-ES');
+  $('recMine').innerHTML = d ? `<b>Mejor sesión</b><span>${fmt(d.best)} puntos</span><b>Puntos en total</b><span>${fmt(d.total)}</span>
+    <b>Mejor truco</b><span>${d.bt ? esc(d.bt) + ' · ' + fmt(d.btp) : '—'}</span><b>Sesiones</b><span>${fmt(d.ses)}</span>`
+    : '<b>Aún nada</b><span>Sal a navegar: tus récords se guardan solos</span>';
+  const list = Object.entries(REC.all || {}).map(([k, v]) => ({ me: k === REC.dev, ...(v.st || {}) })).filter(v => v.best > 0).sort((a, b) => b.best - a.best).slice(0, 10);
+  $('recAll').innerHTML = list.length ? list.map((v, i) => `<span><b>${i + 1}. ${esc(v.nm || 'Rider')}${v.me ? ' (tú)' : ''}</b>${v.bt ? '<br><small>' + esc(v.bt) + '</small>' : ''}</span><span class="pts">${fmt(v.best)}</span>`).join('') : '<b>Vacío</b><span>Nadie ha puntuado todavía</span>';
+}
+
+// ---- NOTAS DE VOZ (como en el wake): mantener pulsado 🎤, hablar y soltar (máx. 8 s). Las oyen todos los de la sala
+const voiceEl = document.createElement('audio'); voiceEl.setAttribute('playsinline', ''); document.body.appendChild(voiceEl);
+const micBtn = document.createElement('button'); micBtn.id = 'bMic'; micBtn.textContent = '🎤'; micBtn.setAttribute('aria-label', 'Mantén pulsado para grabar una nota de voz');
+$('hud').appendChild(micBtn);
+const voiceLog = document.createElement('div'); voiceLog.id = 'voiceLog'; $('hud').appendChild(voiceLog);
+function logVoice(text) {
+  const d = document.createElement('div'); d.textContent = text; voiceLog.prepend(d);
+  while (voiceLog.children.length > 3) voiceLog.lastChild.remove();
+  setTimeout(() => d.classList.add('old'), 6000); setTimeout(() => d.remove(), 7000);
+}
+let recV = null, recChunks = [], recTimer = 0, micStream = null, recMime = '';
+function unlockVoice() { try { voiceEl.muted = true; const pr = voiceEl.play(); if (pr && pr.then) pr.then(() => { voiceEl.pause(); voiceEl.muted = false; }).catch(() => { voiceEl.muted = false; }); } catch (e) {} }
+addEventListener('pointerdown', unlockVoice, { once: true, capture: true });
+async function startRec(e) {
+  e.preventDefault(); e.stopPropagation();
+  if (recV) return;
+  if (!NET.base) { logVoice('Sin conexión a la sala'); return; }
+  if (!navigator.mediaDevices || !window.MediaRecorder) { logVoice('Este navegador no deja grabar audio'); return; }
+  try { if (!micStream) micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+  catch (err) { logVoice('Sin permiso para el micrófono'); return; }
+  recMime = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+  recChunks = [];
+  recV = new MediaRecorder(micStream, recMime ? { mimeType: recMime, audioBitsPerSecond: 32000 } : undefined);
+  recV.ondataavailable = ev => { if (ev.data && ev.data.size) recChunks.push(ev.data); };
+  recV.onstop = () => {
+    const blob = new Blob(recChunks, { type: recV.mimeType || recMime || 'audio/webm' });
+    recV = null; micBtn.classList.remove('rec');
+    if (blob.size < 1500) return;
+    if (blob.size > 280000) { logVoice('Nota de voz demasiado larga'); return; }
+    const fr = new FileReader();
+    fr.onload = () => {
+      const ref = NET.base.child('msgs').push();
+      ref.set({ au: String(fr.result), id: NET.id, nm: myName(), at: firebase.database.ServerValue.TIMESTAMP })
+        .then(() => logVoice('🎤 Tu nota de voz, enviada')).catch(() => logVoice('No se ha podido enviar'));
+      setTimeout(() => ref.remove().catch(() => {}), 60000);   // se borra al minuto
+    };
+    fr.readAsDataURL(blob);
+  };
+  recV.start(); micBtn.classList.add('rec');
+  clearTimeout(recTimer); recTimer = setTimeout(stopRec, 8000);
+}
+function stopRec() { clearTimeout(recTimer); if (recV && recV.state === 'recording') recV.stop(); }
+micBtn.addEventListener('pointerdown', startRec);
+micBtn.addEventListener('pointerup', stopRec); micBtn.addEventListener('pointercancel', stopRec); micBtn.addEventListener('pointerleave', stopRec);
+micBtn.addEventListener('contextmenu', e => e.preventDefault());
+function onVoice(m) {
+  if (!m || m.id === NET.id || typeof m.au !== 'string' || !/^data:audio\/[a-z0-9.+;=-]+;base64,/i.test(m.au)) return;
+  if (typeof m.at === 'number' && Date.now() - m.at > 15000) return;
+  logVoice('🔊 ' + (m.nm || 'Rider'));
+  try { voiceEl.src = m.au; voiceEl.volume = 1; const pr = voiceEl.play(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {}
+}
+
+// ---- pantalla completa (en iPhone: añadir a la pantalla de inicio)
+$('fsBtn').onclick = () => {
+  const d = document.documentElement;
+  if (!d.requestFullscreen && !document.fullscreenElement) { $('fsBtn').textContent = 'Compartir → «Añadir a inicio»'; return; }
+  if (document.fullscreenElement) document.exitFullscreen(); else d.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+};
 
 // =====================================================================================
 //  BUCLE
