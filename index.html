@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b2a3a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Kite & Wing · Puerto de Sagunto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Special+Elite&family=Barlow+Condensed:wght@500;700&display=swap">
+<style>
+  :root { --lima: #c6f432; --mink: #0d1620; --paper: #f7f3ea; --sun: #ffc56b; --coral: #ff5a4e;
+    --display: 'Anton', 'Impact', 'Arial Narrow Bold', sans-serif; --stamp: 'Special Elite', 'Courier New', monospace; --mbody: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b2a3a; color: #fff;
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* HUD */
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #hud[hidden] { display: none; }
+  .tl { position: absolute; left: max(14px, env(safe-area-inset-left)); top: calc(10px + env(safe-area-inset-top)); text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+  .tl b { display: block; font-size: 13px; letter-spacing: .08em; font-weight: 800; }
+  .tl small { display: block; font-size: 11px; letter-spacing: .06em; margin-top: 2px; opacity: .95; }
+  #spd { font-size: 24px; font-weight: 900; letter-spacing: .02em; line-height: 1.05; margin-top: 4px; }
+  #spd em { font-style: normal; font-size: 11px; letter-spacing: .1em; font-weight: 700; margin-left: 4px; }
+  #sail { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 800; letter-spacing: .14em; padding: 2px 7px; background: rgba(13,22,32,.45); border-radius: 3px; }
+  #sail.nogo { background: rgba(255,90,78,.75); }
+  .meter { margin-top: 6px; width: 120px; }
+  .meter span { display: block; font-size: 9px; letter-spacing: .12em; font-weight: 700; }
+  .meter i { display: block; height: 4px; background: rgba(255,255,255,.28); border-radius: 3px; overflow: hidden; margin-top: 2px; }
+  .meter i em { display: block; height: 100%; width: 0%; background: var(--lima); }
+  .tr { position: absolute; right: max(14px, env(safe-area-inset-right)); top: calc(10px + env(safe-area-inset-top)); text-align: right; text-shadow: 0 1px 3px rgba(0,0,0,.6); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .tr b { font-size: 24px; font-weight: 900; display: block; line-height: 1; }
+  .tr small { font-size: 10px; letter-spacing: .14em; }
+  #map { width: 150px; height: 112px; border: 1.5px solid rgba(255,255,255,.85); border-radius: 6px; background: #0e4a63; }
+  #trick { position: absolute; left: 50%; top: 21%; transform: translateX(-50%); text-align: center; white-space: nowrap; font-weight: 900; font-style: italic;
+    font-size: clamp(20px, 4.6vw, 36px); text-shadow: 0 2px 8px rgba(0,0,0,.6); opacity: 0; transition: opacity .25s; }
+  #trick small { display: block; font-size: .42em; font-style: normal; letter-spacing: .16em; margin-top: 4px; }
+  #trick.clean { color: var(--lima); } #trick.fall { color: #ff6a5a; } #trick.info { color: #fff; }
+  #msg { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-weight: 800; letter-spacing: .1em; font-size: 15px; text-align: center;
+    text-shadow: 0 2px 6px rgba(0,0,0,.7); opacity: 0; transition: opacity .3s; max-width: 80vw; }
+  .bb { position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 12px; pointer-events: auto; }
+  .bb button { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.85); background: rgba(0,0,0,.18); color: #fff; font-size: 15px; display: grid; place-items: center; cursor: pointer; padding: 0; }
+
+  /* sticks: aro fino con flechas y palabras, bola que sigue al dedo (como en el wake) */
+  .stick { position: absolute; bottom: calc(22px + env(safe-area-inset-bottom)); width: 140px; height: 140px; }
+  #stL { left: max(18px, env(safe-area-inset-left)); } #stR { right: max(18px, env(safe-area-inset-right)); }
+  .stick svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .stick svg .rim { fill: rgba(10,53,65,.14); stroke: rgba(255,255,255,.85); stroke-width: 1.3; }
+  .stick svg path { fill: none; stroke: rgba(255,255,255,.9); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .stick svg text { fill: #fff; font: 700 9px Arial, Helvetica, sans-serif; letter-spacing: .5px; text-anchor: middle; paint-order: stroke; stroke: rgba(3,41,52,.55); stroke-width: 2px; }
+  .stick .knob { position: absolute; left: calc(50% - 21px); top: calc(50% - 21px); width: 42px; height: 42px; border-radius: 50%; border: 1.3px solid rgba(255,255,255,.9);
+    background: rgba(216,239,155,.12); display: grid; place-items: center; font: 800 10px Arial, sans-serif; color: #eef7d8; text-shadow: 0 1px 3px rgba(3,41,52,.7); will-change: transform; }
+  .stick.on svg .rim { stroke: var(--lima); }
+  .stick.on .knob { background: rgba(216,239,155,.32); border-color: var(--lima); }
+  .stick.air svg .rim { stroke: #58dfff; fill: rgba(23,106,186,.2); }
+  @media (max-width: 520px) and (orientation: portrait) { .stick { width: 124px; height: 124px; } #map { width: 120px; height: 90px; } .bb { bottom: calc(160px + env(safe-area-inset-bottom)); } }
+
+  /* menú: pegatinas sobre la escena, abajo a la izquierda (estilo del wake) */
+  #menu { position: fixed; inset: 0; z-index: 5; display: flex; align-items: flex-end; justify-content: flex-start;
+    background: linear-gradient(to top, rgba(6,20,32,.78), rgba(6,20,32,0) 68%);
+    padding: 16px max(16px, env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); color: var(--paper); font-family: var(--mbody); }
+  #menu[hidden] { display: none; }
+  .panel { max-width: 560px; width: 100%; display: flex; flex-direction: column; gap: 10px; max-height: 100%; overflow-y: auto; }
+  .panel[hidden] { display: none; }
+  .panel { scrollbar-width: none; } .panel::-webkit-scrollbar { display: none; }   /* se puede desplazar, pero sin barra */
+  .logo { align-self: flex-start; background: var(--mink); color: var(--paper); padding: 8px 16px 10px; transform: rotate(-2.5deg);
+    clip-path: polygon(2% 6%, 30% 0, 62% 4%, 98% 0, 100% 40%, 97% 94%, 64% 100%, 30% 96%, 0 100%, 3% 52%); }
+  .logo .a { font-family: var(--display); font-size: clamp(48px, 13vw, 84px); line-height: .9; letter-spacing: .02em; }
+  .logo .b { font-family: var(--stamp); font-size: clamp(15px, 4vw, 21px); line-height: 1.1; margin-top: 2px; }
+  .who { display: flex; align-items: center; gap: 10px; font-size: 17px; text-shadow: 0 1px 6px rgba(0,0,0,.6); }
+  .who b { font-family: var(--display); font-weight: 400; font-size: 21px; }
+  .who .av { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--paper); background: #0e3550 center/cover; flex: none; }
+  .h2 { font-family: var(--stamp); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .cards.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .opt { text-align: left; font-family: var(--mbody); color: var(--paper); background: rgba(13,22,32,.66); border: 3px solid transparent; padding: 6px 9px 8px; cursor: pointer;
+    display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .opt.sel { border-color: var(--sun); background: rgba(13,22,32,.88); }
+  .opt b { font-family: var(--display); font-weight: 400; font-size: 21px; line-height: 1; }
+  .opt em { font-family: var(--stamp); font-style: normal; font-size: 11px; opacity: .85; }
+  .windrow { display: flex; align-items: center; gap: 10px; font-family: var(--stamp); font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+  .windrow input { flex: 1; max-width: 220px; accent-color: #ffc56b; }
+  .loadline { font-family: var(--stamp); font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+  .loadbar { width: 220px; height: 6px; background: rgba(255,255,255,.25); margin-top: 4px; }
+  .loadbar i { display: block; height: 100%; width: 0%; background: var(--sun); transition: width .2s; }
+  .mainmenu { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+  .btn { font-family: var(--display); font-size: 26px; letter-spacing: .03em; background: var(--coral); color: #fff; border: 0; padding: 9px 26px; cursor: pointer;
+    box-shadow: 4px 4px 0 var(--mink); transform: rotate(-1deg); }
+  .btn:disabled { filter: grayscale(.7); opacity: .65; cursor: default; }
+  .mbtn { font-family: var(--display); font-size: 20px; letter-spacing: .03em; background: rgba(13,22,32,.62); color: var(--paper); border: 0; padding: 6px 16px; cursor: pointer; box-shadow: 3px 3px 0 rgba(13,22,32,.5); }
+  .ptitle { font-family: var(--display); font-size: clamp(30px, 7vw, 42px); line-height: 1; text-shadow: 0 3px 0 var(--mink); }
+  .ctl { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 14px; font-size: 16px; align-items: center; background: rgba(13,22,32,.66); padding: 12px 14px; }
+  .ctl .h { font-family: var(--stamp); font-size: 12px; text-transform: uppercase; opacity: .8; }
+  .ctl b { white-space: nowrap; }
+  .ctl kbd { font-family: var(--stamp); font-size: 13px; background: var(--paper); color: var(--mink); padding: 1px 6px; }
+  @media (max-width: 520px) { .ctl { grid-template-columns: auto minmax(0, 1fr); } .ctl > :nth-child(3n) { display: none; } .cards.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-height: 520px) { .logo .a { font-size: 46px; } .panel { gap: 6px; } .opt b { font-size: 18px; } .opt em { display: none; } .btn { font-size: 21px; padding: 7px 20px; } .mbtn { font-size: 17px; } }
+  #err { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 9; background: #600; color: #fff; font: 12px monospace; padding: 6px 8px; border-radius: 6px; white-space: pre-wrap; display: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud" hidden>
+  <div class="tl">
+    <b id="place">PUERTO SILES · CANET</b>
+    <small id="modeLbl">KITESURF · JUANP</small>
+    <div id="spd">0<em>NUDOS</em></div>
+    <small id="windLbl">VIENTO GARBÍ 16 KN</small>
+    <span id="sail">TRAVÉS</span>
+    <div class="meter"><span>POTENCIA</span><i><em id="powM"></em></i></div>
+  </div>
+  <div class="tr"><canvas id="map" width="300" height="224"></canvas><div><b id="score">0</b><small>PUNTOS</small></div></div>
+  <div id="trick"></div>
+  <div id="msg"></div>
+  <div class="stick" id="stL"></div>
+  <div class="stick" id="stR"></div>
+  <div class="bb"><button id="bPause" aria-label="Pausa">❚❚</button><button id="bCam" aria-label="Cambiar cámara">👁</button><button id="bSnd" aria-label="Sonido">🔊</button><button id="bMenu" aria-label="Menú">☰</button></div>
+</div>
+
+<div id="menu">
+  <div class="panel" id="pMain">
+    <div class="logo"><div class="a">KITE &amp; WING</div><div class="b">Mundo libre · Puerto de Sagunto</div></div>
+    <div class="who"><span class="av" style="background-image:url(avatar-juanp.jpg)"></span><span>Navegas con <b>JuanP</b><br><small>Prototipo: tabla de wake y cometa Tatanka</small></span></div>
+    <div class="h2">Deporte</div>
+    <div class="cards" id="modes">
+      <button class="opt sel" data-m="kite"><b>Kitesurf</b><em>Twin-tip y cometa con barra</em></button>
+      <button class="opt" data-m="wing"><b>Wing foil</b><em>Tabla con foil y ala de mano</em></button>
+    </div>
+    <div class="h2">Viento</div>
+    <div class="cards four" id="winds"></div>
+    <label class="windrow"><span id="knLbl">Fuerza 16 nudos</span><input type="range" min="8" max="32" value="16" id="kn"></label>
+    <div class="loadline" id="loadLine">Cargando a JuanP… <span id="loadPct">0 %</span><div class="loadbar"><i id="loadBar"></i></div></div>
+    <nav class="mainmenu">
+      <button class="btn" id="go">A navegar</button>
+      <button class="mbtn" id="camBtn">Cámara: detrás</button>
+      <button class="mbtn" id="toControls">Controles</button>
+    </nav>
+  </div>
+  <div class="panel" id="pControls" hidden>
+    <div class="ptitle">Controles</div>
+    <div class="ctl">
+      <span class="h">Qué</span><span class="h">Móvil</span><span class="h">Teclado</span>
+      <b>Dirección</b><span>Círculo izquierdo a los lados: orzar o arribar</span><span><kbd>←</kbd> <kbd>→</kbd></span>
+      <b>Potencia</b><span>Círculo izquierdo arriba (cazar la barra o el ala) o abajo (soltar)</span><span><kbd>↑</kbd> <kbd>↓</kbd></span>
+      <b>Salto / pump</b><span>Mantén el centro del círculo derecho y suelta. Kite: la cometa sube y saltas. Foil: si vas lento, bombeas para despegar; volando, un saltito</span><span><kbd>Espacio</kbd></span>
+      <b>Rolls</b><span>En el aire, círculo derecho arriba (back roll) o abajo (front roll)</span><span><kbd>W</kbd> <kbd>S</kbd></span>
+      <b>Spin</b><span>En el aire, círculo derecho a los lados</span><span><kbd>A</kbd> <kbd>D</kbd></span>
+      <b>Grab</b><span>Kite: en el aire, mantén el círculo izquierdo</span><span><kbd>G</kbd></span>
+      <b>Kiteloop</b><span>Kite: en el aire, haz un círculo con el derecho</span><span><kbd>L</kbd></span>
+      <b>Virar y trasluchar</b><span>Gira cruzando el viento de cara (virada, necesitas velocidad) o de popa (trasluchada): el rider cambia de lado</span><span></span>
+      <b>Aterrizar</b><span>Suelta los giros a tiempo: si caes torcido, al agua</span><span></span>
+      <b>Cámara, pausa</b><span>Botones de abajo</span><span><kbd>C</kbd> <kbd>P</kbd></span>
+    </div>
+    <nav class="mainmenu"><button class="btn" id="controlsOk">Volver</button></nav>
+  </div>
+</div>
+<div id="err"></div>
+
+<script>
+  window.addEventListener('error', e => { const el = document.getElementById('err'); el.style.display = 'block'; el.textContent += (e.message || e) + (e.filename ? ' @' + e.filename.split('/').pop() + ':' + e.lineno : '') + '\n'; });
+</script>
+<script src="vendor.js"></script>
+<script>const V_ = Date.now(); for (const s of ['escenario.js', 'humano.js', 'juego.js']) document.write('<script src="' + s + '?v=' + V_ + '"><\/script>');</script>
+</body>
+</html>
