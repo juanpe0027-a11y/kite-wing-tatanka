@@ -410,6 +410,9 @@ function drawSticks() {
   $('barG').setAttribute('transform', `translate(0 ${(-by * 22).toFixed(1)}) rotate(${(bx * 26).toFixed(1)})`);
   $('hud').classList.toggle('inAir', R.state === 'air');
   $('bJump').style.setProperty('--c', R.charge.toFixed(2));
+  // en wing el botón es PUMP despacio y SALTO cuando vas volando o planeando rápido
+  const kn = GAME.mode === 'wing' && !(R.foilOn || R.v > 5) ? 'PUMP' : 'SALTO';
+  if ($('bJump').textContent !== kn) $('bJump').textContent = kn;
 }
 // ceñir va arriba y abajo en las dos amuras: no hay que recolocar nada
 function stickWords() {}
@@ -496,7 +499,10 @@ function updateRider(dt, S) {
       if (GAME.mode === 'kite') {
         if (R.v > 3) startAir(2 + c * (1.8 + 0.42 * WIND.ms) + 0.12 * R.v, 0.55);
         else say('MÁS VELOCIDAD PARA SALTAR', 'info', 1.2);
-      } else if (R.foilOn) startAir(2.2 + 1.6 * c, 0);
+      } else if (R.foilOn || R.v > 5) {   // wing: volando o planeando rápido, salto de verdad; el ala tira hacia arriba en el aire
+        startAir(2.4 + c * (2 + 0.3 * WIND.ms) + 0.14 * R.v, 0.45);
+        say('¡SALTO!', 'clean', 0.8);
+      }
       else {   // pump: los seguidos (menos de 1 s) empujan más; cuanto más rápido, menos aporta
         const chain = GAME.t - (R.pumpT || -9) < 1 ? 1.35 : 1; R.pumpT = GAME.t;
         R.v += (0.5 + 1.0 * c) * chain * (1 - smooth(2, 6, R.v) * 0.5); say('PUMP', 'info', 0.7); sfxThump(90, 0.25, 0.2);
