@@ -1043,9 +1043,10 @@ function loadScript(src) { return new Promise((res, rej) => { const e = document
 })();
 function peerData(id, v) {
   if (id === NET.id || !v || !v.st) return;
-  const P = NET.peers[id] || (NET.peers[id] = { id, vis: null, first: true, pos: V3(), q: new T.Quaternion(), k: V3(), kq: new T.Quaternion(), wl: V3(), wq: new T.Quaternion() });
+  const isNew = !NET.peers[id];
+  const P = NET.peers[id] || (NET.peers[id] = { id, vis: null, first: true, pos: V3(), vel: V3(), q: new T.Quaternion(), ko: V3(), kq: new T.Quaternion(), wl: V3(), wq: new T.Quaternion() });
   P.st = v.st; P.ch = v.ch; P.seen = performance.now();
-  netMenu();
+  if (isNew || performance.now() - (NET.menuT || 0) > 1000) { NET.menuT = performance.now(); netMenu(); }
 }
 function peerGone(id) { const P = NET.peers[id]; if (!P) return; dropPeerVis(P); delete NET.peers[id]; netMenu(); }
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -1057,16 +1058,19 @@ function netMenu() {
   if (!box) { box = document.createElement('div'); box.id = 'mpList'; box.style.cssText = 'position:absolute;right:max(14px,env(safe-area-inset-right));top:168px;text-align:right;font:700 12px/1.45 system-ui,sans-serif;letter-spacing:.04em;text-shadow:0 1px 4px rgba(0,0,0,.7);pointer-events:none'; $('hud').appendChild(box); }
   box.innerHTML = ps.filter(P => P.st.p).map(P => `${esc(P.st.n || 'Rider')} · ${(P.st.sc || 0).toLocaleString('es-ES')}`).join('<br>');
 }
-const nt = { p: V3(), q: new T.Quaternion() };
+const nt = { p: V3(), q: new T.Quaternion(), v: V3() };
 function netSend(dt) {
   if (!NET.connected || !NET.me) return;
   if (GAME.running) recTick(dt);
   NET.sendT -= dt; if (NET.sendT > 0) return; NET.sendT = 0.12;
   const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
   inner.getWorldPosition(nt.p); inner.getWorldQuaternion(nt.q);
+  const now = performance.now(), el = (now - (NET.lt || 0)) / 1000;
+  if (NET.lp && el > 0.03 && el < 1) nt.v.subVectors(nt.p, NET.lp).divideScalar(el); else nt.v.set(0, 0, 0);
+  NET.lp = (NET.lp || V3()).copy(nt.p); NET.lt = now;
   const st = {
     n: myName(), m: GAME.mode, kb: GEAR.kb, fb: GEAR.fb, w: WING.design, p: GAME.running ? 1 : 0, sc: R.score,
-    x: r2(nt.p.x), y: r2(nt.p.y), z: r2(nt.p.z), q: [r3(nt.q.x), r3(nt.q.y), r3(nt.q.z), r3(nt.q.w)],
+    x: r2(nt.p.x), y: r2(nt.p.y), z: r2(nt.p.z), vx: r2(nt.v.x), vy: r2(nt.v.y), vz: r2(nt.v.z), q: [r3(nt.q.x), r3(nt.q.y), r3(nt.q.z), r3(nt.q.w)],
     t: Math.round(Date.now() / 500),   // cambia siempre: así los demás saben que sigues ahí aunque estés quieto
     yw: r2(R.yaw), pw: r2(R.power), v: r2(R.v), c: r2(R.charge), s: R.state === 'air' ? 1 : R.state === 'fallen' ? 2 : 0,
   };
@@ -1112,7 +1116,7 @@ function posePeer(V, st, t) {
   try { computePose(t); poseHuman(V.h, J); }
   finally { Object.assign(R, sv); GAME.mode = sm; WING.g.position.copy(wp); WING.g.quaternion.copy(wq); WING.handles.forEach((o, i) => o.position.z = hz[i]); }
 }
-const pt2 = { a: V3(), b: V3(), c: V3() };
+const pt2 = { a: V3(), b: V3(), c: V3(), v: V3(), q: new T.Quaternion() };
 function updatePeers(dt, t) {
   for (const id in NET.peers) {
     const P = NET.peers[id], st = P.st;
@@ -1120,17 +1124,24 @@ function updatePeers(dt, t) {
     const key = [P.ch, st.m, st.kb, st.fb, st.w, st.n].join('|');
     if (P.vis && P.vis.key !== key) dropPeerVis(P);
     if (!P.vis) { P.vis = buildPeer(P); P.first = true; if (!P.vis) continue; }
-    const V = P.vis, k = P.first ? 1 : clamp(dt * 8, 0, 1);
-    P.pos.lerp(pt2.a.set(st.x, st.y, st.z), k); P.q.slerp(new T.Quaternion(...st.q).normalize(), k);
-    if (P.pos.distanceTo(pt2.a) > 30) P.pos.copy(pt2.a);   // se ha ido lejos (mar adentro): sin arrastrarlo
+    const V = P.vis, k = P.first ? 1 : clamp(dt * 10, 0, 1);
+    // dónde estará ahora: el último mensaje más lo que ha avanzado desde entonces (como mucho medio segundo)
+    const age = Math.min(0.5, (performance.now() - P.seen) / 1000);
+    pt2.v.set(st.vx || 0, st.vy || 0, st.vz || 0); P.vel.lerp(pt2.v, P.first ? 1 : clamp(dt * 6, 0, 1));
+    pt2.a.set(st.x, st.y, st.z).addScaledVector(pt2.v, age);
+    if (P.first || P.pos.distanceTo(pt2.a) > 30) P.pos.copy(pt2.a);   // al aparecer o si se ha ido lejos (mar adentro): sin arrastrarlo
+    else { P.pos.addScaledVector(P.vel, dt); P.pos.lerp(pt2.a, clamp(dt * 3, 0, 1)); }
+    P.q.slerp(pt2.q.set(st.q[0], st.q[1], st.q[2], st.q[3]).normalize(), k);
+    P.first = false;
     V.inn.position.copy(P.pos); V.inn.quaternion.copy(P.q); V.bodyG.rotation.y = st.yw;
     V.inn.updateMatrixWorld(true);
     posePeer(V, st, t);
-    if (V.wing && st.wl) { P.wl.lerp(pt2.b.fromArray(st.wl), k); P.wq.slerp(new T.Quaternion(...st.wq).normalize(), k); V.wing.position.copy(P.wl); V.wing.quaternion.copy(P.wq); }
+    if (V.wing && st.wl) { P.wl.lerp(pt2.b.fromArray(st.wl), k); P.wq.slerp(pt2.q.set(st.wq[0], st.wq[1], st.wq[2], st.wq[3]).normalize(), k); V.wing.position.copy(P.wl); V.wing.quaternion.copy(P.wq); }
     if (V.kite && st.k) {
-      P.k.lerp(pt2.b.fromArray(st.k), k); P.kq.slerp(new T.Quaternion(...st.kq).normalize(), k);
-      if (P.k.distanceTo(pt2.b) > 40) P.k.copy(pt2.b);
-      V.kite.position.copy(P.k); V.kite.quaternion.copy(P.kq); V.kite.updateMatrixWorld(true);
+      pt2.b.fromArray(st.k).sub(pt2.c.set(st.x, st.y, st.z));
+      if (P.ko.lengthSq() === 0) P.ko.copy(pt2.b); else P.ko.lerp(pt2.b, clamp(dt * 5, 0, 1));
+      P.kq.slerp(pt2.q.set(st.kq[0], st.kq[1], st.kq[2], st.kq[3]).normalize(), clamp(dt * 6, 0, 1));
+      V.kite.position.copy(P.pos).add(P.ko); V.kite.quaternion.copy(P.kq); V.kite.updateMatrixWorld(true);
       const hand = pt2.c; if (V.h.knuckL) { V.h.knuckL.getWorldPosition(hand); hand.add(V.h.knuckR.getWorldPosition(pt2.b)).multiplyScalar(0.5); } else hand.copy(P.pos).y += 1.2;
       const arr = V.lines.geometry.attributes.position; let i = 0;
       for (const a of ['fl', 'fr', 'bl', 'br']) { arr.setXYZ(i++, hand.x, hand.y, hand.z); const e = V.kite.localToWorld(pt2.b.copy(KITE.at[a])); arr.setXYZ(i++, e.x, e.y, e.z); }
