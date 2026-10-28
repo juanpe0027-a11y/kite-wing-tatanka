@@ -650,8 +650,10 @@ function updateKite(dt) {
   const e = Math.hypot(KITE.kx, KITE.el / HP);
   if (e > 0.97) { KITE.kx *= 0.97 / e; KITE.el *= 0.97 / e; }
   if (e > 0.8 && Math.abs(KITE.tilt) < 0.3) KITE.psi += angDiff(KITE.psi, Math.atan2(KITE.kx, KITE.el / HP)) * clamp(dt * 2.5 * (e - 0.8) / 0.17, 0, 1);
-  // abajo, rozando el agua: rebota hacia arriba
-  if (KITE.el < 0.12) { KITE.el = 0.12; if (Math.cos(KITE.psi) < 0) KITE.psi = Math.PI - KITE.psi; }
+  // abajo, junto al agua: no baja más; si el morro apunta al agua se endereza y sigue volando en horizontal a un metro
+  const elLo = Math.max(0.12, KITE.elMin || 0);
+  if (KITE.el <= elLo + 0.03 && Math.cos(KITE.psi) < 0) KITE.psi += angDiff(KITE.psi, (Math.sign(Math.sin(KITE.psi)) || sd) * HP) * clamp(dt * 8, 0, 1);
+  if (KITE.el < elLo) KITE.el = elLo;
   KITE.psi = angDiff(0, KITE.psi);
   KITE.az = KITE.kx; if (Math.abs(KITE.kx) > 0.1) KITE.side = Math.sign(KITE.kx);
   KITE.e = Math.min(e, 0.97);
@@ -671,7 +673,14 @@ function updateKite(dt) {
   else { eU = uA.normalize(); eR = V3().crossVectors(Z, eU); }
   const Y = eU.multiplyScalar(Math.cos(KITE.psi)).addScaledVector(eR, Math.sin(KITE.psi)).normalize();
   const X = V3().crossVectors(Y, Z), Yw = V3().crossVectors(Z, X);
-  tmp.m.makeBasis(X, Yw, Z); KITE.g.quaternion.setFromRotationMatrix(tmp.m); KITE.g.position.copy(KITE.pos);
+  tmp.m.makeBasis(X, Yw, Z); KITE.g.quaternion.setFromRotationMatrix(tmp.m);
+  // nunca toca el agua: el punto más bajo de la tela (una punta al girar) se queda al menos a un metro
+  let low = 0; const b0k = KITE.base, q = KITE.g.quaternion;
+  for (let i = 0; i < b0k.length; i += 3) low = Math.min(low, tmp.a.set(b0k[i], b0k[i + 1], b0k[i + 2]).applyQuaternion(q).y);
+  const elReq = Math.asin(clamp((1 - low - KITE.barC.y) / LINE, -1, 1));
+  KITE.elMin = elReq - (el - KITE.el);
+  if (el < elReq) { el = elReq; KITE.pos.copy(KITE.barC).addScaledVector(dir, LINE * Math.cos(el)); KITE.pos.y += LINE * Math.sin(el); Z.subVectors(KITE.pos, KITE.barC).normalize(); }
+  KITE.g.position.copy(KITE.pos);
   KITE.g.updateMatrixWorld(true);
   // barra y líneas: las delanteras salen del centro, las traseras de los extremos
   const bd = KITE.barDir, c = KITE.barC;
