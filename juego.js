@@ -330,11 +330,11 @@ function readSticks() {
   const b = IN.btn;
   const S = {
     L: { x: IN.L.x, y: -IN.L.y, on: !!b.grab || !!k.KeyG },   // barra: x mueve la cometa, y es la potencia
-    B: -R.s * IN.R.y,                                           // mando derecho: arriba ceñir más (orzar), abajo ceñir menos (arribar)
+    C: IN.R.y,                                                  // mando derecho: abajo ceñir más (hacia el viento), arriba ceñir menos
     R: { x: 0, y: 0, hold: !!b.jump || !!k.Space, rel: false, circle: b.loopEv || IN.kbLoop },   // salto y trucos
   };
   if (k.KeyA || k.ArrowLeft) S.L.x = -1; if (k.KeyD || k.ArrowRight) S.L.x = 1; if (k.KeyR) S.L.y = 1; if (k.KeyF) S.L.y = -1;
-  if (k.ArrowUp) S.B = -R.s; if (k.ArrowDown) S.B = R.s;
+  if (k.ArrowUp) S.C = 1; if (k.ArrowDown) S.C = -1;
   if (b.back || k.KeyW) S.R.y = 1; if (b.front || k.KeyS) S.R.y = -1; if (b.spinL || k.KeyQ) S.R.x = -1; if (b.spinR || k.KeyE) S.R.x = 1;
   S.R.rel = (b.jumpRel || IN.kbRel) && R.charge > 0.06;
   b.jumpRel = b.loopEv = false; IN.R.relEv = IN.L.relEv = false; IN.kbRel = false; IN.R.circleEv = 0; IN.kbLoop = false;
@@ -344,15 +344,14 @@ function readSticks() {
 // en el menú navega solo, a un descuartelar, sin acercarse a la costa
 function autopilot() {
   const F = WIND.F, phi = Math.atan2(F.z, F.x);
-  if (R.state === 'fallen') { if (R.fallT > 2) getUp(); return { L: { x: 0, y: 0 }, B: 0, R: { x: 0, y: 0 } }; }
+  if (R.state === 'fallen') { if (R.fallT > 2) getUp(); return { L: { x: 0, y: 0 }, C: 0, R: { x: 0, y: 0 } }; }
   let s = R.s;
   const want = sd => { const h = phi + sd * 100 * DEG; return Math.sin(h); };   // componente z del rumbo
   if (R.z > SHORE_Z - 140 && want(s) > -0.2) s = -s;                          // hacia el mar
   if (R.z < SHORE_Z - 700 && want(s) < 0.2) s = -s;                            // hacia la costa
   if (R.x > PIER_X - 200 && Math.cos(phi + s * 100 * DEG) > 0) s = -s;
   if (R.x < MARINA_X + 150 && Math.cos(phi + s * 100 * DEG) < 0) s = -s;
-  const d = angDiff(R.h, phi + s * 100 * DEG);
-  return { L: { x: 0, y: 0.1 }, B: clamp(d * 1.6, -1, 1), R: { x: 0, y: 0 } };
+  return { L: { x: 0, y: 0.1 }, C: 0, want: s, R: { x: 0, y: 0 } };
 }
 // dibujo de los sticks
 function stickSVG(words, knob) {
@@ -366,7 +365,7 @@ $('stL').innerHTML = `<svg viewBox="-110 -62 220 124" aria-hidden="true"><rect c
   <g id="barG"><path class="ln" d="M-74,0 L-14,-60 M74,0 L14,-60 M-5,0 L-3,-60 M5,0 L3,-60"/>
   <rect class="bar" x="-80" y="-5" width="160" height="10" rx="5"/><rect x="-80" y="-5" width="30" height="10" rx="5" fill="#ff5a4e"/>
   <rect x="50" y="-5" width="30" height="10" rx="5" fill="#2a8bff"/><circle cx="0" cy="13" r="7" class="loop"/></g></svg><i class="knob"></i>`;
-$('stR').innerHTML = stickSVG(['CEÑIR +', '', 'CEÑIR -', ''], '');
+$('stR').innerHTML = stickSVG(['CEÑIR −', '', 'CEÑIR +', ''], '');
 // botones: salto (o pump) y, en el aire, los trucos; se mantienen pulsados
 for (const el of document.querySelectorAll('#bJump, #tricks button')) {
   const t = el.dataset.t, on = e => { e.preventDefault(); IN.btn[t] = true; if (t === 'loop') IN.btn.loopEv = true; el.classList.add('on'); };
@@ -422,17 +421,21 @@ function updateRider(dt, S) {
   } else if (R.state === 'ride') {
     // giro con inercia: la velocidad de giro sube y baja poco a poco; curva suave para el dedo
     const kite = GAME.mode === 'kite';
-    let st = clamp(S.B, -1, 1);
-    // ¿hacia qué lado de la pantalla queda el viento (y con él la cometa o el ala)?
-    const dsc = -H.z * D.x + H.x * D.z >= 0 ? 1 : -1, phi = Math.atan2(F.z, F.x);
-    R.gyT = Math.abs(S.L.x) > 0.5 && Math.sign(S.L.x) !== dsc ? (R.gyT || 0) + dt : 0;
-    if (R.gyT > 0.35 && !R.gybe) R.gybe = -R.s;
-    if (R.gybe) {   // trasluchada: primero hacia popa, luego al través de la otra amura
-      const tgt = phi + R.gybe * 100 * DEG, hd = Math.atan2(D.z, D.x);
+    const phi = Math.atan2(F.z, F.x);
+    // con la cometa manda ella: si pasa al otro lado de la ventana, trasluchada y sales hacia ese lado
+    if (kite && !R.gybe && Math.abs(KITE.kx) > 0.15 && Math.sign(KITE.kx) !== sideOfS(R.s)) R.gybe = -R.s;
+    // con el wing, la barra mantenida hacia el otro lado de la pantalla hace la trasluchada
+    if (!kite) { const rdir = H.dot(WIND.E0) >= 0 ? 1 : -1; R.gyT = Math.abs(S.L.x) > 0.5 && Math.sign(S.L.x) !== rdir ? (R.gyT || 0) + dt : 0; if (R.gyT > 0.35 && !R.gybe) R.gybe = -R.s; }
+    if (S.want && S.want !== R.s && !R.gybe) R.gybe = S.want;   // el piloto del menú
+    // ceñir: el mando derecho fija el rumbo respecto al viento (abajo ceñir más, arriba ceñir menos; suelto, al través)
+    const twaT = 100 + 45 * clamp(S.C || 0, -1, 1);
+    let st;
+    if (R.gybe) {   // trasluchada: primero hacia popa, luego al rumbo de la otra amura
+      const hd = Math.atan2(D.z, D.x);
       if (R.s !== R.gybe) st = Math.sign(angDiff(R.h, hd)) || 1;
-      else { const e = angDiff(R.h, tgt); st = clamp(e * 2, -1, 1); if (Math.abs(e) < 0.12 || Math.abs(S.B) > 0.3) R.gybe = 0; }
-    }
-    const inp = Math.sign(st) * Math.pow(Math.abs(st), R.gybe ? 1 : 1.4);
+      else { const e = angDiff(R.h, phi + R.s * twaT * DEG); st = clamp(e * 2, -1, 1); if (Math.abs(e) < 0.12) R.gybe = 0; }
+    } else st = clamp(angDiff(R.h, phi + R.s * twaT * DEG) * 1.6, -1, 1);
+    const inp = st;
     const maxRate = kite ? 0.52 + 0.07 * Math.min(R.v, 10) : 0.6 + (R.foilOn ? 0.07 : 0.04) * Math.min(R.v, 10);
     R.turn = lerp(R.turn, inp, clamp(dt * 5, 0, 1));
     R.yr += (R.turn * maxRate * (R.gybe ? 1.6 : 1) - R.yr) * clamp(dt * (kite ? 3.4 : 2.8), 0, 1);
@@ -443,7 +446,7 @@ function updateRider(dt, S) {
     let vt = WIND.ms * polar(R.twa) * pf * M.k;
     if (M.foil && !R.foilOn) vt *= 0.6;                         // sin volar, el casco frena
     // la cometa tira más metida en la zona de potencia; si la pasas al otro lado, frena
-    if (kite) vt *= KITE.az * KITE.side < -0.05 ? 0.35 : 0.8 + 0.5 * (1 - Math.abs(KITE.az));
+    if (kite) vt *= Math.abs(KITE.kx) > 0.15 && Math.sign(KITE.kx) !== sideOfS(R.s) ? 0.5 : 0.75 + 0.45 * (1 - KITE.e) + 0.45 * KITE.vk / 1.5;   // la cometa corriendo por el centro tira más; aparcada en el borde, menos
     vt = Math.min(vt, 22);
     // inercia: acelera más despacio que frena; volando en el foil se planea y frena poco
     const acc = 0.6, dec = kite ? 0.9 : R.foilOn ? 0.45 : 1.1;
@@ -608,57 +611,71 @@ function placeRider(t) {
 
 // ---- la cometa: posición en la ventana de viento, orientación y líneas a la barra
 // la cometa ya colocada en su lado de la ventana (al empezar, sin cruzarla)
-function snapKite() { const s = Math.sign(Math.cos(R.h) * WIND.E0.x + Math.sin(R.h) * WIND.E0.z) || 1; KITE.side = s; KITE.az = s * 0.75; KITE.el = 0.6; }
+// ---- la cometa como una de verdad: vuela por la ventana de viento hacia donde apunta su morro.
+//      La barra la hace girar (tirar de la izquierda = gira a la izquierda); al soltarla sigue recta,
+//      llega al borde de la ventana y se queda ahí aparcada. En el centro corre y tira más.
+//      Coordenadas de la ventana vistas con el viento a la espalda: kx = -1 izquierda … +1 derecha, el = altura (rad),
+//      psi = hacia dónde apunta el morro (0 arriba, +π/2 a la derecha)
+const sideOfS = s => { const F = WIND.F, h = Math.atan2(F.z, F.x) + s * 100 * DEG; return Math.sign(Math.cos(h) * WIND.E0.x + Math.sin(h) * WIND.E0.z) || 1; };
+function snapKite() { const sd = sideOfS(R.s); KITE.kx = sd * 0.75; KITE.el = 0.55; KITE.psi = sd * 1.25; KITE.vk = 0; KITE.e = 0.9; KITE.az = KITE.kx; KITE.side = sd; }
+function kiteSteer(tx, tel) {   // piloto automático: gira el morro hacia un punto de la ventana
+  return clamp(angDiff(KITE.psi, Math.atan2(tx - KITE.kx, (tel - KITE.el) / (Math.PI / 2))) * 2.2, -1, 1);
+}
 function updateKite(dt) {
   if (GAME.mode !== 'kite') return;
-  const D = WIND.D, E0 = WIND.E0, H = tmp.H.set(Math.cos(R.h), 0, Math.sin(R.h));
-  const hs = H.dot(E0); if (Math.abs(hs) > 0.15) KITE.side = Math.sign(hs);
-  let azT = KITE.side * lerp(0.9, 0.6, R.power), elT = lerp(0.72, 0.42, R.power);
-  // la barra la mueve por la ventana: a la derecha o a la izquierda de la pantalla, y al moverla baja (picado)
-  const camR = -H.z * E0.x + H.x * E0.z >= 0 ? 1 : -1;
-  KITE.u = lerp(KITE.u || 0, (R.kiteIn || 0) * camR * 1.1, clamp(dt * 4.4, 0, 1));
-  azT = clamp(azT + KITE.u, -0.97, 0.97); elT -= 0.22 * Math.abs(KITE.u);
-  if (R.charge > 0) { azT *= 1 - 0.65 * R.charge; elT = lerp(elT, 1.2, R.charge); }
-  if (R.state === 'air') { azT = KITE.side * 0.2; elT = R.air && R.air.t < 1.5 ? 1.3 : 1.0; }
-  if (R.state === 'fallen') { azT = KITE.side * 0.97; elT = 0.12; }
-  // ágil pero sin saltos: rápida al principio y con velocidad tope al cruzar la ventana
-  KITE.az += clamp((azT - KITE.az) * clamp(dt * 5, 0, 1), -dt * 1.8, dt * 1.8);
-  KITE.el += clamp((elT - KITE.el) * clamp(dt * 6, 0, 1), -dt * 1.6, dt * 1.6);
-  let az = KITE.az, el = KITE.el;
-  if (KITE.loop > 0) { KITE.loop = Math.max(0, KITE.loop - dt / 1.3); const a = (1 - KITE.loop) * TAU; az += KITE.side * 0.35 * Math.sin(a); el -= 0.32 * (1 - Math.cos(a)); }
-  const t = GAME.t, gust = WIND.knNow - WIND.kn;
-  // ochos: más amplios y rápidos con poca velocidad (hay que trabajar la cometa) y al girar
-  const ride = R.state === 'ride';
-  KITE.amp = lerp(KITE.amp || 0.1, ride ? 0.07 + 0.17 * (1 - smooth(4, 10, R.v)) : 0.03, clamp(dt * 2, 0, 1)); const amp = KITE.amp;
-  KITE.tw = lerp(KITE.tw || 0, ride ? (R.kiteIn || 0) : 0, clamp(dt * 3, 0, 1));   // la barra, suavizada al despegar y al caer
-  KITE.ph = (KITE.ph || 0) + dt * (2.1 + 1.9 * R.power);
-  az += amp * Math.sin(KITE.ph) + 0.03 * Math.sin(t * 1.7 + 1);
-  el -= amp * 0.6 * Math.sin(2 * KITE.ph) + 0.15 * Math.abs(KITE.tw);
-  el = clamp(el + 0.035 * Math.sin(t * 0.9) + 0.015 * Math.sin(t * 2.3) + 0.012 * gust, 0.08, 1.45);
+  const D = WIND.D, E0 = WIND.E0, t = GAME.t;
+  // ¿quién lleva la cometa? el jugador con la barra; al cargar el salto, en el aire, caído o en el menú, el piloto automático
+  const sd = sideOfS(R.gybe || R.s);
+  let tilt = clamp(R.kiteIn || 0, -1, 1);
+  if (!GAME.running) tilt = kiteSteer(sd * 0.7, 0.5 + 0.1 * Math.sin(t * 0.4));
+  if (R.state === 'ride' && R.charge > 0.05) tilt = lerp(tilt, kiteSteer(KITE.kx * 0.3, 1.3), R.charge);
+  if (R.state === 'air') tilt = R.air && R.air.t < 1.1 ? kiteSteer(sd * 0.2, 1.3) : kiteSteer(sd * 0.6, 0.7);
+  if (R.state === 'fallen') tilt = kiteSteer(Math.sign(KITE.kx || 1) * 0.95, 0.15);
+  KITE.tilt = lerp(KITE.tilt || 0, tilt, clamp(dt * 8, 0, 1));
+  // giro del morro: rápido con la barra; en el kiteloop da la vuelta entera
+  KITE.psi += KITE.tilt * (2.6 + 0.6 * R.power) * dt;
+  if (KITE.loop > 0) { KITE.loop = Math.max(0, KITE.loop - dt / 1.3); KITE.psi += sd * TAU / 1.3 * dt; }
+  // velocidad: corre en el centro de la ventana y se para en el borde
+  const HP = Math.PI / 2, e0 = Math.hypot(KITE.kx, KITE.el / HP);
+  const vmax = 1.5 * clamp(0.5 + 0.5 * WIND.knNow / 16, 0.6, 1.4);
+  // en el borde no puede seguir hacia fuera, pero si la giras hacia dentro vuelve a correr
+  let vx = Math.sin(KITE.psi) * vmax * (0.3 + 0.7 * R.power), vy = Math.cos(KITE.psi) * vmax * (0.3 + 0.7 * R.power);
+  const nx = KITE.kx / (e0 || 1), ny = KITE.el / HP / (e0 || 1), out = vx * nx + vy * ny;
+  if (out > 0) { const f = out * smooth(0.82, 0.97, e0); vx -= f * nx; vy -= f * ny; }
+  KITE.vk = Math.hypot(vx, vy);
+  KITE.kx += vx * dt;
+  KITE.el += vy * HP * 0.8 * dt;
+  // el borde: no lo pasa, y sin tocar la barra el morro se queda mirando hacia fuera (aparcada)
+  const e = Math.hypot(KITE.kx, KITE.el / HP);
+  if (e > 0.97) { KITE.kx *= 0.97 / e; KITE.el *= 0.97 / e; }
+  if (e > 0.8 && Math.abs(KITE.tilt) < 0.3) KITE.psi += angDiff(KITE.psi, Math.atan2(KITE.kx, KITE.el / HP)) * clamp(dt * 2.5 * (e - 0.8) / 0.17, 0, 1);
+  // abajo, rozando el agua: rebota hacia arriba
+  if (KITE.el < 0.12) { KITE.el = 0.12; if (Math.cos(KITE.psi) < 0) KITE.psi = Math.PI - KITE.psi; }
+  KITE.psi = angDiff(0, KITE.psi);
+  KITE.az = KITE.kx; if (Math.abs(KITE.kx) > 0.1) KITE.side = Math.sign(KITE.kx);
+  KITE.e = Math.min(e, 0.97);
+  let az = KITE.kx, el = KITE.el;
+  const gust = WIND.knNow - WIND.kn;
+  az += 0.012 * Math.sin(t * 1.7 + 1); el = clamp(el + 0.015 * Math.sin(t * 0.9) + 0.006 * gust, 0.08, 1.5);
   // la barra: entre los nudillos de JuanP
   if (HUMAN && HUMAN.knuckL) { const a = HUMAN.knuckL.getWorldPosition(tmp.a), b = HUMAN.knuckR.getWorldPosition(tmp.b); KITE.barC.addVectors(a, b).multiplyScalar(0.5); KITE.barDir = (KITE.barDir || V3()).subVectors(b, a).normalize(); }
   else { body.localToWorld(KITE.barC.copy(J.aF).add(J.aB).multiplyScalar(0.5)); KITE.barDir = (KITE.barDir || V3()).set(-Math.sin(R.h), 0, Math.cos(R.h)); }
-  const a = az * Math.PI / 2 * 0.95, dir = tmp.c.copy(D).multiplyScalar(Math.cos(a)).addScaledVector(E0, Math.sin(a));
+  const a = az * Math.PI / 3, dir = tmp.c.copy(D).multiplyScalar(Math.cos(a)).addScaledVector(E0, Math.sin(a));
   KITE.pos.copy(KITE.barC).addScaledVector(dir, LINE * Math.cos(el)); KITE.pos.y += LINE * Math.sin(el);
   const Z = tmp.d.subVectors(KITE.pos, KITE.barC).normalize();
-  // el morro: hacia el centro de la ventana (navegando queda casi vertical al agua)
-  const up = V3().copy(UP).addScaledVector(Z, -UP.dot(Z)), cen = V3().copy(D).addScaledVector(Z, -D.dot(Z));
-  // sin normalizar cada parte: cerca del cénit 'arriba' casi desaparece y manda el centro, así no se vuelve loca
-  KITE.rw = lerp(KITE.rw ?? 1, ride ? 1 : 0, clamp(dt * 1.5, 0, 1));   // navegando de lado (vertical) o saltando (arriba), con transición suave
-  const Yd = up.multiplyScalar(lerp(1.2, 0.4, KITE.rw)).addScaledVector(cen, lerp(0.25, 1, KITE.rw));
-  Yd.addScaledVector(Z, -Yd.dot(Z)); if (Yd.lengthSq() < 1e-4) Yd.copy(D).addScaledVector(Z, -D.dot(Z)); Yd.normalize();
-  KITE.Y = (KITE.Y || Yd.clone()).lerp(Yd, clamp(dt * 3, 0, 1)); KITE.Y.addScaledVector(Z, -KITE.Y.dot(Z)).normalize();
-  const Y = KITE.Y.clone();   // la inclinación va sobre una copia, para que no se acumule
-  // los ochos y la barra la inclinan, pero con tope: nunca da la vuelta entera
-  KITE.roll = lerp(KITE.roll || 0, clamp(amp * 1.5 * Math.cos(KITE.ph) - KITE.tw * 0.5 * KITE.side, -0.6, 0.6), clamp(dt * 4, 0, 1)); const roll = KITE.roll;
-  Y.applyAxisAngle(Z, roll + 0.05 * Math.sin(t * 1.4));
+  // el morro hacia psi en el plano de la ventana: derecha = E0 (con el viento a la espalda), arriba = hacia el cénit
+  const rA = V3().copy(E0).addScaledVector(Z, -E0.dot(Z)), uA = V3().copy(UP).addScaledVector(Z, -UP.dot(Z));
+  let eR, eU;
+  if (rA.lengthSq() > uA.lengthSq()) { eR = rA.normalize(); eU = V3().crossVectors(eR, Z); }
+  else { eU = uA.normalize(); eR = V3().crossVectors(Z, eU); }
+  const Y = eU.multiplyScalar(Math.cos(KITE.psi)).addScaledVector(eR, Math.sin(KITE.psi)).normalize();
   const X = V3().crossVectors(Y, Z), Yw = V3().crossVectors(Z, X);
   tmp.m.makeBasis(X, Yw, Z); KITE.g.quaternion.setFromRotationMatrix(tmp.m); KITE.g.position.copy(KITE.pos);
   KITE.g.updateMatrixWorld(true);
   // barra y líneas: las delanteras salen del centro, las traseras de los extremos
   const bd = KITE.barDir, c = KITE.barC;
   // tensión: tiran más con potencia, velocidad y en el aire; si no, las líneas cuelgan
-  const tens = R.state === 'fallen' ? 0.15 : clamp(0.3 + 0.4 * R.power + 0.04 * R.v + (R.state === 'air' ? 0.3 : 0), 0, 1);
+  const tens = R.state === 'fallen' ? 0.15 : clamp(0.3 + 0.4 * R.power + 0.03 * R.v + 0.2 * KITE.vk + (R.state === 'air' ? 0.3 : 0), 0, 1);
   const sag = lerp(1.6, 0.18, tens), split = V3().copy(c).addScaledVector(Z, 1.6);
   KITE.ln = 0;
   KITE.line(c, split, 0, 0, 0);
@@ -683,9 +700,9 @@ function updateKite(dt) {
 // =====================================================================================
 //  CÁMARAS: detrás por defecto, cerca, lateral, alta y desde la cometa / el ala
 // =====================================================================================
-const CAM = { mode: 0, names: ['DETRÁS', 'CERCA', 'LATERAL', 'ALTA', 'DESDE ARRIBA'], pos: V3(), look: V3(), h: 0, off: null, lookOff: null };
-try { CAM.mode = +(localStorage.getItem('kite-cam') || 0) % CAM.names.length; } catch (e) {}
-function setCam(i) { CAM.mode = i; $('camBtn').textContent = 'Cámara: ' + CAM.names[i].toLowerCase(); try { localStorage.setItem('kite-cam', i); } catch (e) {} }
+const CAM = { mode: 0, names: ['VIENTO', 'DETRÁS', 'CERCA', 'ALTA', 'DESDE ARRIBA'], pos: V3(), look: V3(), h: 0, off: null, lookOff: null };
+try { CAM.mode = +(localStorage.getItem('kite-cam2') || 0) % CAM.names.length; } catch (e) {}
+function setCam(i) { CAM.mode = i; $('camBtn').textContent = 'Cámara: ' + CAM.names[i].toLowerCase(); try { localStorage.setItem('kite-cam2', i); } catch (e) {} }
 function nextCam() { setCam((CAM.mode + 1) % CAM.names.length); msg('CÁMARA: ' + CAM.names[CAM.mode], 1.2); }
 function updateCamera(dt) {
   const portrait = camera.aspect < 1, far = portrait ? 1.4 : 1;
@@ -700,16 +717,17 @@ function updateCamera(dt) {
     camera.position.copy(want); camera.lookAt(look); CAM.off = null; return;
   }
   const m = CAM.mode;
-  if (m === 0) { want.copy(rp).addScaledVector(Hc, -12 * far).addScaledVector(D, -2.5).add(V3(0, 2.8 * far, 0)); look.copy(rp).addScaledVector(Hc, 8).addScaledVector(D, 3).add(V3(0, 3.2, 0)); }   // como en Kiteboarding Pro: lejos y bajo, con la cometa grande arriba
-  else if (m === 1) { want.copy(rp).addScaledVector(Hc, -4.2 * far).addScaledVector(D, -0.8).add(V3(0, 1.9, 0)); look.copy(rp).addScaledVector(Hc, 5).add(V3(0, 1.3, 0)); }
-  else if (m === 2) { want.copy(rp).addScaledVector(D, -11 * far).addScaledVector(Hc, 2).add(V3(0, 2.6, 0)); look.copy(rp).addScaledVector(D, 4).add(V3(0, 2.2, 0)); }
+  // VIENTO: con el viento a la espalda, como se ve el kite desde la playa: la cometa delante y el rider cruzando a izquierda o derecha
+  if (m === 0) { want.copy(rp).addScaledVector(D, -16 * far).addScaledVector(Hc, 1).add(V3(0, 5.5 * far, 0)); look.copy(rp).addScaledVector(D, 10).add(V3(0, portrait ? 3.5 : 2.2, 0)); }
+  else if (m === 1) { want.copy(rp).addScaledVector(Hc, -12 * far).addScaledVector(D, -2.5).add(V3(0, 2.8 * far, 0)); look.copy(rp).addScaledVector(Hc, 8).addScaledVector(D, 3).add(V3(0, 3.2, 0)); }
+  else if (m === 2) { want.copy(rp).addScaledVector(Hc, -4.2 * far).addScaledVector(D, -0.8).add(V3(0, 1.9, 0)); look.copy(rp).addScaledVector(Hc, 5).add(V3(0, 1.3, 0)); }
   else if (m === 3) { want.copy(rp).addScaledVector(Hc, -32).add(V3(0, 26, 0)); look.copy(rp).addScaledVector(Hc, 10); }
   else {
     if (GAME.mode === 'kite') { want.copy(KITE.pos).lerp(rp, 0.12).y += 1.5; look.copy(rp).add(V3(0, 0.8, 0)); }
     else { want.copy(rp).addScaledVector(Hc, 4).addScaledVector(D, 3).add(V3(0, 6, 0)); look.copy(rp).add(V3(0, 1, 0)); }
   }
-  if (GAME.mode === 'kite' && m < 3) look.lerp(KITE.pos, m === 2 ? 0.1 : m === 0 ? 0.3 : 0.22);   // que se vea también la cometa
-  const k = clamp(dt * (m === 1 ? 7 : 4), 0, 1);
+  if (GAME.mode === 'kite' && m < 3) look.lerp(KITE.pos, m === 0 ? 0.12 : m === 1 ? 0.3 : 0.22);   // que se vea también la cometa
+  const k = clamp(dt * (m === 2 ? 7 : 4), 0, 1);
   CAM.off = (CAM.off || want.clone().sub(rp)).lerp(want.sub(rp), k);
   CAM.lookOff = (CAM.lookOff || look.clone().sub(rp)).lerp(look.sub(rp), clamp(dt * 6, 0, 1));
   CAM.pos.copy(rp).add(CAM.off); CAM.look.copy(rp).add(CAM.lookOff);
