@@ -17,7 +17,7 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0b2a3a; color: #fff;
     font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
-  canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; filter: saturate(1.18) contrast(1.06); }
 
   /* HUD */
   #hud { position: fixed; inset: 0; pointer-events: none; }
@@ -48,7 +48,9 @@
 
   /* sticks: aro fino con flechas y palabras, bola que sigue al dedo (como en el wake) */
   .stick { position: absolute; bottom: calc(22px + env(safe-area-inset-bottom)); width: 140px; height: 140px; }
-  #stL { left: max(18px, env(safe-area-inset-left)); } #stR { right: max(18px, env(safe-area-inset-right)); }
+  #stL { left: max(18px, env(safe-area-inset-left)); width: 220px; height: 124px; } #stR { right: max(18px, env(safe-area-inset-right)); }
+  #stL .knob { display: none; } #stL .bar { fill: #1b2126; stroke: rgba(255,255,255,.9); stroke-width: 1.3; } #stL .ln { stroke: rgba(255,255,255,.55); stroke-width: 1; }
+  #stL .loop { fill: none; stroke: #ff9d2e; stroke-width: 2.5; } #stL.on .bar { stroke: var(--lima); }
   .stick svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
   .stick svg .rim { fill: rgba(10,53,65,.14); stroke: rgba(255,255,255,.85); stroke-width: 1.3; }
   .stick svg path { fill: none; stroke: rgba(255,255,255,.9); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
@@ -58,7 +60,7 @@
   .stick.on svg .rim { stroke: var(--lima); }
   .stick.on .knob { background: rgba(216,239,155,.32); border-color: var(--lima); }
   .stick.air svg .rim { stroke: #58dfff; fill: rgba(23,106,186,.2); }
-  @media (max-width: 520px) and (orientation: portrait) { .stick { width: 124px; height: 124px; } #map { width: 120px; height: 90px; } .bb { bottom: calc(160px + env(safe-area-inset-bottom)); } }
+  @media (max-width: 520px) and (orientation: portrait) { .stick { width: 124px; height: 124px; } #stL { width: 190px; height: 108px; } #map { width: 120px; height: 90px; } .bb { bottom: calc(160px + env(safe-area-inset-bottom)); } }
 
   /* menú: pegatinas sobre la escena, abajo a la izquierda (estilo del wake) */
   #menu { position: fixed; inset: 0; z-index: 5; display: flex; align-items: flex-end; justify-content: flex-start;

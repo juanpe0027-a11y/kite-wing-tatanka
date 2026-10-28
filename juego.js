@@ -43,8 +43,8 @@ function sailName(twa) { return twa < 38 ? 'PROA AL VIENTO' : twa < 70 ? 'CEÑID
 //  MODOS
 // =====================================================================================
 const MODES = {
-  kite: { name: 'KITESURF', k: 1.12, foil: false, knob: 'SALTO' },
-  wing: { name: 'WING FOIL', k: 0.9, foil: true, takeoff: 4.4, knob: 'PUMP' },
+  kite: { name: 'KITESURF', k: 0.85, foil: false, knob: 'SALTO' },
+  wing: { name: 'WING FOIL', k: 0.8, foil: true, takeoff: 4.4, knob: 'PUMP' },
 };
 const FOIL_H = 0.55;   // altura de la tabla sobre el agua cuando vuela el foil
 
@@ -122,6 +122,11 @@ const KITE = (() => {
     c.fillStyle = '#0d1620'; c.fillRect(0, 0, w * 0.14, h); c.fillRect(w * 0.86, 0, w * 0.14, h);
     c.fillStyle = '#ff5a4e'; c.fillRect(w * 0.14, 0, w * 0.08, h); c.fillRect(w * 0.78, 0, w * 0.08, h);
     c.fillStyle = '#0d1620'; c.font = 'italic 900 92px Segoe UI, sans-serif'; c.fillText('TATANKA', w * 0.29, h * 0.62);
+    const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(255,255,255,.22)'); gr.addColorStop(0.5, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(0,0,0,.22)');
+    c.fillStyle = gr; c.fillRect(0, 0, w, h);
+    c.strokeStyle = 'rgba(13,22,32,.35)'; c.lineWidth = 3;
+    for (let i = 1; i < 12; i++) { c.beginPath(); c.moveTo(w * i / 12, 0); c.lineTo(w * i / 12, h); c.stroke(); }
+    c.strokeStyle = 'rgba(13,22,32,.6)'; c.lineWidth = 8; c.strokeRect(0, 0, w, h);
   });
   const canopy = new T.Mesh(geo, MAT(0xffffff, 0.6, 0, { map: tex, side: T.DoubleSide })); g.add(canopy);
   const lePts = []; for (let i = 0; i <= 24; i++) lePts.push(P(i / 24 * 2 - 1, 0));
@@ -130,10 +135,23 @@ const KITE = (() => {
   scene.add(g);
   // puntos de las líneas: delanteras en el borde de ataque, traseras en las puntas
   const at = { fl: P(-0.45, 0.1), fr: P(0.45, 0.1), bl: P(-1, 0.9), br: P(1, 0.9) };
-  const lineGeo = new T.BufferGeometry(); lineGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(8 * 3), 3));
-  const lines = new T.LineSegments(lineGeo, new T.LineBasicMaterial({ color: 0x20262c, transparent: true, opacity: 0.85 })); lines.frustumCulled = false; scene.add(lines);
+  const SEG = 18, NV = (4 * SEG + 1) * 2, lineGeo = new T.BufferGeometry();
+  lineGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(NV * 3), 3));
+  lineGeo.setAttribute('color', new T.BufferAttribute(new Float32Array(NV * 3), 3));
+  const lines = new T.LineSegments(lineGeo, new T.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 })); lines.frustumCulled = false; scene.add(lines);
+  const COLS = [[0.92, 0.93, 0.9], [1, 0.3, 0.25], [0.2, 0.5, 1]];   // centrales claras, mando izquierdo rojo, derecho azul
+  // una línea de a a b que cuelga (y se la lleva un poco el viento) y vibra un poco
+  const pt = V3();
+  function line(a, b, sag, ph, col) {
+    const n = sag ? SEG : 1, P = lineGeo.attributes.position, C = lineGeo.attributes.color, cc = COLS[col];
+    for (let k = 0; k < n; k++) for (const s of [k / n, (k + 1) / n]) {
+      const bow = 4 * s * (1 - s), vib = 0.03 * Math.sin(ph + s * 9) * bow;
+      pt.lerpVectors(a, b, s); pt.y -= sag * bow; pt.addScaledVector(WIND.D, sag * 0.25 * bow); pt.x += vib; pt.z += vib;
+      const i = KITE.ln++; P.setXYZ(i, pt.x, pt.y, pt.z); C.setXYZ(i, cc[0], cc[1], cc[2]);
+    }
+  }
   const bar = new T.Mesh(new T.CylinderGeometry(0.018, 0.018, 0.52, 8), MAT(0x15171a, 0.4)); bar.castShadow = true; scene.add(bar);
-  return { g, at, lines, lineGeo, bar, az: 0.8, el: 0.6, side: 1, loop: 0, pos: V3(), barC: V3() };
+  return { g, at, lines, lineGeo, bar, line, ln: 0, cgeo: geo, base: Float32Array.from(pos), NS, NC, az: 0.8, el: 0.6, side: 1, loop: 0, pos: V3(), barC: V3() };
 })();
 
 let HUMAN = null;   // JuanP (juanp.glb) cuando ha cargado
@@ -217,7 +235,7 @@ addEventListener('pointerdown', e => {
   // el dedo va por posición sobre el círculo; si se toca lejos, cuenta desde donde se puso
   const b = $(side === 'L' ? 'stL' : 'stR').getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2, rad = b.width * 0.47;
   const abs = Math.hypot(e.clientX - cx, e.clientY - cy) < rad * 1.5;
-  const t = abs ? { side, x0: cx, y0: cy, rad } : { side, x0: e.clientX, y0: e.clientY, rad: 56 };
+  const t = abs ? { side, x0: cx, y0: cy, rad } : { side, x0: e.clientX, y0: e.clientY, rad: side === 'L' ? 80 : 56 };
   touches.set(e.pointerId, t);
   const s = IN[side]; s.on = true; s.x = s.y = 0; s.ang = null; s.turn = 0;
   $(side === 'L' ? 'stL' : 'stR').classList.add('on');
@@ -243,7 +261,7 @@ addEventListener('keyup', e => { IN.kb[e.code] = false; if (e.code === 'Space') 
 function readSticks() {
   const k = IN.kb;
   const S = {
-    L: { x: IN.L.x, y: IN.L.y, on: IN.L.on || !!k.KeyG },
+    L: { x: IN.L.x, y: -IN.L.y, on: IN.L.on || !!k.KeyG },
     R: { x: IN.R.x, y: IN.R.y, hold: (IN.R.on && Math.hypot(IN.R.x, IN.R.y) < 0.35) || !!k.Space, rel: false, circle: IN.R.circleEv || IN.kbLoop },
   };
   if (k.ArrowLeft) S.L.x = -1; if (k.ArrowRight) S.L.x = 1; if (k.ArrowUp) S.L.y = 1; if (k.ArrowDown) S.L.y = -1;
@@ -272,10 +290,17 @@ function stickSVG(words, knob) {
   return `<svg viewBox="-70 -70 140 140" aria-hidden="true"><circle r="66" class="rim"/>${chev(0)}${chev(90)}${chev(180)}${chev(270)}
     <text x="0" y="-41">${words[0]}</text><text x="44" y="-18">${words[1]}</text><text x="0" y="49">${words[2]}</text><text x="-44" y="-18">${words[3]}</text></svg><i class="knob">${knob}</i>`;
 }
-$('stL').innerHTML = stickSVG(['POTENCIA', 'ARRIBAR', 'SOLTAR', 'ORZAR'], '');
+// la barra de la cometa: puño rojo (izquierda) y azul (derecha), líneas hacia arriba y el chicken loop
+$('stL').innerHTML = `<svg viewBox="-110 -62 220 124" aria-hidden="true"><rect class="rim" x="-106" y="-58" width="212" height="116" rx="22"/>
+  <text x="0" y="-44">SOLTAR</text><text x="88" y="-26">ARRIBAR</text><text x="0" y="52">TIRAR · POTENCIA</text><text x="-88" y="-26">ORZAR</text>
+  <g id="barG"><path class="ln" d="M-74,0 L-14,-60 M74,0 L14,-60 M-5,0 L-3,-60 M5,0 L3,-60"/>
+  <rect class="bar" x="-80" y="-5" width="160" height="10" rx="5"/><rect x="-80" y="-5" width="30" height="10" rx="5" fill="#ff5a4e"/>
+  <rect x="50" y="-5" width="30" height="10" rx="5" fill="#2a8bff"/><circle cx="0" cy="13" r="7" class="loop"/></g></svg><i class="knob"></i>`;
 $('stR').innerHTML = stickSVG(['BACKROLL', 'SPIN', 'FRONTROLL', 'SPIN'], 'SALTO');
 function drawSticks() {
-  for (const [id, s] of [['stL', IN.L], ['stR', IN.R]]) $(id).querySelector('.knob').style.transform = `translate(${(s.x * 40).toFixed(1)}px, ${(-s.y * 40).toFixed(1)}px)`;
+  $('stR').querySelector('.knob').style.transform = `translate(${(IN.R.x * 40).toFixed(1)}px, ${(-IN.R.y * 40).toFixed(1)}px)`;
+  const bx = IN.L.on ? IN.L.x : clamp(R.turn, -1, 1), by = IN.L.on ? IN.L.y : 0;
+  $('barG').setAttribute('transform', `translate(0 ${(-by * 22).toFixed(1)}) rotate(${(bx * 26).toFixed(1)})`);
   $('stR').classList.toggle('air', R.state === 'air');
   $('stL').classList.toggle('air', R.state === 'air' && GAME.mode === 'kite');
 }
@@ -324,9 +349,9 @@ function updateRider(dt, S) {
   } else if (R.state === 'ride') {
     // giro con inercia: la velocidad de giro sube y baja poco a poco; curva suave para el dedo
     const kite = GAME.mode === 'kite', inp = Math.sign(S.L.x) * Math.pow(Math.abs(S.L.x), 1.4);
-    const maxRate = kite ? 0.45 + 0.07 * Math.min(R.v, 10) : 0.5 + (R.foilOn ? 0.06 : 0.03) * Math.min(R.v, 10);
-    R.turn = lerp(R.turn, inp, clamp(dt * 4, 0, 1));
-    R.yr += (R.turn * maxRate - R.yr) * clamp(dt * (kite ? 3 : 2.2), 0, 1);
+    const maxRate = kite ? 0.26 + 0.035 * Math.min(R.v, 10) : 0.3 + (R.foilOn ? 0.035 : 0.02) * Math.min(R.v, 10);
+    R.turn = lerp(R.turn, inp, clamp(dt * 2.5, 0, 1));
+    R.yr += (R.turn * maxRate - R.yr) * clamp(dt * (kite ? 1.7 : 1.4), 0, 1);
     R.h += R.yr * dt;
     R.v -= Math.abs(R.yr) * R.v * (kite ? 0.1 : 0.06) * dt;     // trazar curvas cuesta velocidad
     // velocidad objetivo: viento × polar × potencia (con poco viento la cometa o el ala no tira)
@@ -336,7 +361,7 @@ function updateRider(dt, S) {
     if (GAME.mode === 'kite' && Math.abs(KITE.az) < 0.4) vt += 1.5;   // la cometa cruzando la zona de potencia
     vt = Math.min(vt, 22);
     // inercia: acelera más despacio que frena; volando en el foil se planea y frena poco
-    const acc = kite ? 0.45 : 0.32, dec = kite ? 0.6 : R.foilOn ? 0.3 : 0.75;
+    const acc = 0.3, dec = kite ? 0.6 : R.foilOn ? 0.3 : 0.75;
     R.v += (vt - R.v) * (vt > R.v ? acc : dec) * dt;
     if (R.twa < 38) { R.v = Math.max(0, R.v - 1.4 * dt); if (R.v < 1.5) R.h += R.s * 0.7 * dt; }   // proa al viento: te para y te hace caer
     if (M.foil) {
@@ -398,9 +423,9 @@ function updateRider(dt, S) {
   R.yaw += clamp(yawT - R.yaw, -dt * 3.2, dt * 3.2);
   // la estela y las salpicaduras leen esto
   RIDER.pos.set(R.x, 0, R.z); RIDER.vel.set(H.x * R.v, 0, H.z * R.v); RIDER.edge = R.foilOn ? 0 : R.turn * 0.4; RIDER.state = R.state === 'air' ? 'air' : R.state;
-  if (R.state === 'ride' && R.v > 3 && !R.foilOn && Math.random() < dt * (8 + R.v * 2)) {
+  if (R.state === 'ride' && R.v > 3 && !R.foilOn && Math.random() < dt * (16 + R.v * 3.5)) {
     const sx = -H.z * R.s * -0.25, sz = H.x * R.s * -0.25;   // del canto de barlovento
-    emit(R.x - H.x * 0.6 + sx, surf + 0.05, R.z - H.z * 0.6 + sz, -D.x * 1 + (Math.random() - 0.5), 1 + Math.random() * 1.5, -D.z * 1 + (Math.random() - 0.5), 0.2, 0.7);
+    emit(R.x - H.x * 0.6 + sx, surf + 0.05, R.z - H.z * 0.6 + sz, -D.x * 1 + (Math.random() - 0.5), 1 + Math.random() * 1.5, -D.z * 1 + (Math.random() - 0.5), 0.3, 0.9);   // espuma blanca abundante, como en el vídeo
   }
   R.top = Math.max(R.top || 0, R.v);
 }
@@ -510,7 +535,9 @@ function updateKite(dt) {
   KITE.el += (elT - KITE.el) * clamp(dt * 1.8, 0, 1);
   let az = KITE.az, el = KITE.el;
   if (KITE.loop > 0) { KITE.loop = Math.max(0, KITE.loop - dt / 1.3); const a = (1 - KITE.loop) * TAU; az += KITE.side * 0.35 * Math.sin(a); el -= 0.32 * (1 - Math.cos(a)); }
-  el = clamp(el + Math.sin(GAME.t * 0.9) * 0.02, 0.08, 1.45);
+  const t = GAME.t, gust = WIND.knNow - WIND.kn;
+  az += 0.05 * Math.sin(t * 0.63) + 0.025 * Math.sin(t * 1.7 + 1) + R.turn * 0.12 * (R.state === 'ride' ? 1 : 0);
+  el = clamp(el + 0.035 * Math.sin(t * 0.9) + 0.015 * Math.sin(t * 2.3) + 0.012 * gust, 0.08, 1.45);
   // la barra: entre los nudillos de JuanP
   if (HUMAN && HUMAN.knuckL) { const a = HUMAN.knuckL.getWorldPosition(tmp.a), b = HUMAN.knuckR.getWorldPosition(tmp.b); KITE.barC.addVectors(a, b).multiplyScalar(0.5); KITE.barDir = (KITE.barDir || V3()).subVectors(b, a).normalize(); }
   else { body.localToWorld(KITE.barC.copy(J.aF).add(J.aB).multiplyScalar(0.5)); KITE.barDir = (KITE.barDir || V3()).set(-Math.sin(R.h), 0, Math.cos(R.h)); }
@@ -518,18 +545,31 @@ function updateKite(dt) {
   KITE.pos.copy(KITE.barC).addScaledVector(dir, LINE * Math.cos(el)); KITE.pos.y += LINE * Math.sin(el);
   const Z = tmp.d.subVectors(KITE.pos, KITE.barC).normalize(), Y = tmp.n.copy(UP).addScaledVector(Z, -UP.dot(Z));
   if (Y.lengthSq() < 1e-4) Y.copy(D); Y.normalize();
-  Y.applyAxisAngle(Z, (KITE.az - azT) * 0.8);   // se inclina al moverse por la ventana
+  Y.applyAxisAngle(Z, (KITE.az - azT) * 0.8 - R.turn * 0.35 * KITE.side + 0.05 * Math.sin(t * 1.4));   // se inclina al moverse por la ventana y al girar
   const X = V3().crossVectors(Y, Z);
   tmp.m.makeBasis(X, Y, Z); KITE.g.quaternion.setFromRotationMatrix(tmp.m); KITE.g.position.copy(KITE.pos);
   KITE.g.updateMatrixWorld(true);
   // barra y líneas: las delanteras salen del centro, las traseras de los extremos
-  const bd = KITE.barDir, p = KITE.lineGeo.attributes.position, c = KITE.barC;
-  const w = (i, v) => p.setXYZ(i, v.x, v.y, v.z);
-  w(0, V3().copy(c).addScaledVector(bd, -0.03)); w(1, KITE.g.localToWorld(V3().copy(KITE.at.fl)));
-  w(2, V3().copy(c).addScaledVector(bd, 0.03)); w(3, KITE.g.localToWorld(V3().copy(KITE.at.fr)));
-  w(4, V3().copy(c).addScaledVector(bd, -0.26)); w(5, KITE.g.localToWorld(V3().copy(KITE.at.bl)));
-  w(6, V3().copy(c).addScaledVector(bd, 0.26)); w(7, KITE.g.localToWorld(V3().copy(KITE.at.br)));
-  p.needsUpdate = true;
+  const bd = KITE.barDir, c = KITE.barC;
+  // tensión: tiran más con potencia, velocidad y en el aire; si no, las líneas cuelgan
+  const tens = R.state === 'fallen' ? 0.15 : clamp(0.3 + 0.4 * R.power + 0.04 * R.v + (R.state === 'air' ? 0.3 : 0), 0, 1);
+  const sag = lerp(1.6, 0.18, tens), split = V3().copy(c).addScaledVector(Z, 1.6);
+  KITE.ln = 0;
+  KITE.line(c, split, 0, 0, 0);
+  KITE.line(split, KITE.g.localToWorld(V3().copy(KITE.at.fl)), sag, t * 23, 0);
+  KITE.line(split, KITE.g.localToWorld(V3().copy(KITE.at.fr)), sag, t * 23 + 2, 0);
+  KITE.line(V3().copy(c).addScaledVector(bd, -0.26), KITE.g.localToWorld(V3().copy(KITE.at.bl)), sag * 1.1, t * 19 + 4, 1);
+  KITE.line(V3().copy(c).addScaledVector(bd, 0.26), KITE.g.localToWorld(V3().copy(KITE.at.br)), sag * 1.1, t * 19 + 6, 2);
+  KITE.lineGeo.setDrawRange(0, KITE.ln);
+  KITE.lineGeo.attributes.position.needsUpdate = true; KITE.lineGeo.attributes.color.needsUpdate = true;
+  // la tela tiembla en el borde de salida, más con poca tensión
+  const fp = KITE.cgeo.attributes.position, b0 = KITE.base, NSv = KITE.NS + 1;
+  for (let i = 0; i < fp.count; i++) {
+    const v = Math.floor(i / NSv) / KITE.NC, u = (i % NSv) / KITE.NS;
+    const f = v * v * (0.05 + 0.1 * (1 - tens)) * Math.sin(t * 13 + u * 18 + v * 3);
+    fp.setXYZ(i, b0[i * 3], b0[i * 3 + 1], b0[i * 3 + 2] + f);
+  }
+  fp.needsUpdate = true;
   KITE.bar.position.copy(c); KITE.bar.quaternion.setFromUnitVectors(UP, bd);
 }
 
@@ -544,7 +584,7 @@ function updateCamera(dt) {
   const portrait = camera.aspect < 1, far = portrait ? 1.4 : 1;
   const fov = portrait ? 72 : 58; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
   const rp = tmp.a.set(R.x, R.state === 'air' ? R.y : riderRoot.position.y, R.z), D = WIND.D;
-  CAM.h += angDiff(CAM.h, R.h) * clamp(dt * 2, 0, 1);
+  CAM.h += angDiff(CAM.h, R.h) * clamp(dt * 1.2, 0, 1);
   const Hc = tmp.b.set(Math.cos(CAM.h), 0, Math.sin(CAM.h)), want = tmp.c, look = tmp.n;
   if (!GAME.running) {   // menú: vuelta lenta alrededor del rider
     const a = GAME.t * 0.06 + 2.2;
@@ -553,7 +593,7 @@ function updateCamera(dt) {
     camera.position.copy(want); camera.lookAt(look); CAM.off = null; return;
   }
   const m = CAM.mode;
-  if (m === 0) { want.copy(rp).addScaledVector(Hc, -8.5 * far).addScaledVector(D, -1.5).add(V3(0, 3.4 * far, 0)); look.copy(rp).addScaledVector(Hc, 6).addScaledVector(D, 2).add(V3(0, 1.8, 0)); }
+  if (m === 0) { want.copy(rp).addScaledVector(Hc, -12 * far).addScaledVector(D, -2.5).add(V3(0, 2.8 * far, 0)); look.copy(rp).addScaledVector(Hc, 8).addScaledVector(D, 3).add(V3(0, 3.2, 0)); }   // como en Kiteboarding Pro: lejos y bajo, con la cometa grande arriba
   else if (m === 1) { want.copy(rp).addScaledVector(Hc, -4.2 * far).addScaledVector(D, -0.8).add(V3(0, 1.9, 0)); look.copy(rp).addScaledVector(Hc, 5).add(V3(0, 1.3, 0)); }
   else if (m === 2) { want.copy(rp).addScaledVector(D, -11 * far).addScaledVector(Hc, 2).add(V3(0, 2.6, 0)); look.copy(rp).addScaledVector(D, 4).add(V3(0, 2.2, 0)); }
   else if (m === 3) { want.copy(rp).addScaledVector(Hc, -32).add(V3(0, 26, 0)); look.copy(rp).addScaledVector(Hc, 10); }
@@ -561,10 +601,10 @@ function updateCamera(dt) {
     if (GAME.mode === 'kite') { want.copy(KITE.pos).lerp(rp, 0.12).y += 1.5; look.copy(rp).add(V3(0, 0.8, 0)); }
     else { want.copy(rp).addScaledVector(Hc, 4).addScaledVector(D, 3).add(V3(0, 6, 0)); look.copy(rp).add(V3(0, 1, 0)); }
   }
-  if (GAME.mode === 'kite' && m < 3) look.lerp(KITE.pos, m === 2 ? 0.1 : 0.22);   // que se vea también la cometa
-  const k = clamp(dt * (m === 1 ? 5 : 3.2), 0, 1);
+  if (GAME.mode === 'kite' && m < 3) look.lerp(KITE.pos, m === 2 ? 0.1 : m === 0 ? 0.3 : 0.22);   // que se vea también la cometa
+  const k = clamp(dt * (m === 1 ? 3.5 : 2), 0, 1);
   CAM.off = (CAM.off || want.clone().sub(rp)).lerp(want.sub(rp), k);
-  CAM.lookOff = (CAM.lookOff || look.clone().sub(rp)).lerp(look.sub(rp), clamp(dt * 6, 0, 1));
+  CAM.lookOff = (CAM.lookOff || look.clone().sub(rp)).lerp(look.sub(rp), clamp(dt * 3, 0, 1));
   CAM.pos.copy(rp).add(CAM.off); CAM.look.copy(rp).add(CAM.lookOff);
   CAM.pos.y = Math.max(CAM.pos.y, surfaceH(CAM.pos.x, CAM.pos.z, GAME.t) + 0.6);
   camera.position.copy(CAM.pos); camera.lookAt(CAM.look);
