@@ -618,7 +618,7 @@ function placeRider(t) {
 //      Coordenadas de la ventana vistas con el viento a la espalda: kx = -1 izquierda … +1 derecha, el = altura (rad),
 //      psi = hacia dónde apunta el morro (0 arriba, +π/2 a la derecha)
 const sideOfS = s => { const F = WIND.F, h = Math.atan2(F.z, F.x) + s * 100 * DEG; return Math.sign(Math.cos(h) * WIND.E0.x + Math.sin(h) * WIND.E0.z) || 1; };
-function snapKite() { const sd = sideOfS(R.s); KITE.kx = sd * 0.75; KITE.el = 0.55; KITE.psi = sd * 1.25; KITE.vk = 0; KITE.e = 0.9; KITE.az = KITE.kx; KITE.side = sd; }
+function snapKite() { const sd = sideOfS(R.s); KITE.kx = sd * 0.75; KITE.el = 0.55; KITE.psi = sd * 1.25; KITE.vk = 0; KITE.vx = KITE.vy = 0; KITE.qOk = false; KITE.e = 0.9; KITE.az = KITE.kx; KITE.side = sd; }
 function kiteSteer(tx, tel) {   // piloto automático: gira el morro hacia un punto de la ventana
   return clamp(angDiff(KITE.psi, Math.atan2(tx - KITE.kx, (tel - KITE.el) / (Math.PI / 2))) * 2.2, -1, 1);
 }
@@ -632,17 +632,24 @@ function updateKite(dt) {
   if (R.state === 'ride' && R.charge > 0.05) tilt = lerp(tilt, kiteSteer(KITE.kx * 0.3, 1.3), R.charge);
   if (R.state === 'air') tilt = R.air && R.air.t < 1.1 ? kiteSteer(sd * 0.2, 1.3) : kiteSteer(sd * 0.6, 0.7);
   if (R.state === 'fallen') tilt = kiteSteer(Math.sign(KITE.kx || 1) * 0.95, 0.15);
-  KITE.tilt = lerp(KITE.tilt || 0, tilt, clamp(dt * 8, 0, 1));
-  // giro del morro: rápido con la barra; en el kiteloop da la vuelta entera
-  KITE.psi += KITE.tilt * (2.6 + 0.6 * R.power) * dt;
+  KITE.tilt = lerp(KITE.tilt || 0, tilt, clamp(dt * 3, 0, 1));   // la barra entra poco a poco: sin tirones
+  // giro del morro: progresivo con la barra; en el kiteloop da la vuelta entera
+  KITE.psi += KITE.tilt * (1.8 + 0.5 * R.power) * dt;
   if (KITE.loop > 0) { KITE.loop = Math.max(0, KITE.loop - dt / 1.3); KITE.psi += sd * TAU / 1.3 * dt; }
   // velocidad: corre en el centro de la ventana y se para en el borde
   const HP = Math.PI / 2, e0 = Math.hypot(KITE.kx, KITE.el / HP);
   const vmax = 1.5 * clamp(0.5 + 0.5 * WIND.knNow / 16, 0.6, 1.4);
   // en el borde no puede seguir hacia fuera, pero si la giras hacia dentro vuelve a correr
-  let vx = Math.sin(KITE.psi) * vmax * (0.3 + 0.7 * R.power), vy = Math.cos(KITE.psi) * vmax * (0.3 + 0.7 * R.power);
+  // con inercia: la velocidad cambia de dirección poco a poco, como una cometa de verdad
+  const vT = vmax * (0.3 + 0.7 * R.power), ki = clamp(dt * 2.2, 0, 1);
+  let vx = lerp(KITE.vx || 0, Math.sin(KITE.psi) * vT, ki), vy = lerp(KITE.vy || 0, Math.cos(KITE.psi) * vT, ki);
   const nx = KITE.kx / (e0 || 1), ny = KITE.el / HP / (e0 || 1), out = vx * nx + vy * ny;
-  if (out > 0) { const f = out * smooth(0.82, 0.97, e0); vx -= f * nx; vy -= f * ny; }
+  const outOk = Math.max(0, 0.96 - e0) * 4;   // cuanto más cerca del borde, menos puede seguir hacia fuera: frena sin golpe
+  if (out > outOk) { const f = (out - outOk) * clamp(dt * 14, 0, 1); vx -= f * nx; vy -= f * ny; }
+  // junto al agua frena la bajada suavemente en vez de chocar
+  const elLo = Math.max(0.12, KITE.elMin || 0) + 0.04;   // un poco de margen para no tener que corregirla de golpe
+  if (vy < 0) vy *= smooth(elLo, elLo + 0.2, KITE.el);
+  KITE.vx = vx; KITE.vy = vy;
   KITE.vk = Math.hypot(vx, vy);
   KITE.kx += vx * dt;
   KITE.el += vy * HP * 0.8 * dt;
@@ -651,15 +658,14 @@ function updateKite(dt) {
   if (e > 0.97) { KITE.kx *= 0.97 / e; KITE.el *= 0.97 / e; }
   if (e > 0.8 && Math.abs(KITE.tilt) < 0.3) KITE.psi += angDiff(KITE.psi, Math.atan2(KITE.kx, KITE.el / HP)) * clamp(dt * 2.5 * (e - 0.8) / 0.17, 0, 1);
   // abajo, junto al agua: no baja más; si el morro apunta al agua se endereza y sigue volando en horizontal a un metro
-  const elLo = Math.max(0.12, KITE.elMin || 0);
-  if (KITE.el <= elLo + 0.03 && Math.cos(KITE.psi) < 0) KITE.psi += angDiff(KITE.psi, (Math.sign(Math.sin(KITE.psi)) || sd) * HP) * clamp(dt * 8, 0, 1);
+  if (KITE.el <= elLo + 0.1 && Math.cos(KITE.psi) < 0) KITE.psi += angDiff(KITE.psi, (Math.sign(Math.sin(KITE.psi)) || sd) * HP) * clamp(dt * 3 * smooth(elLo + 0.1, elLo, KITE.el), 0, 1);
   if (KITE.el < elLo) KITE.el = elLo;
   KITE.psi = angDiff(0, KITE.psi);
   KITE.az = KITE.kx; if (Math.abs(KITE.kx) > 0.1) KITE.side = Math.sign(KITE.kx);
   KITE.e = Math.min(e, 0.97);
   let az = KITE.kx, el = KITE.el;
   const gust = WIND.knNow - WIND.kn;
-  az += 0.012 * Math.sin(t * 1.7 + 1); el = clamp(el + 0.015 * Math.sin(t * 0.9) + 0.006 * gust, 0.08, 1.5);
+  az += 0.012 * Math.sin(t * 1.7 + 1); el = clamp(el + 0.015 * Math.sin(t * 0.9) + 0.006 * gust, 0.08, 1.56);
   // la barra: entre los nudillos de JuanP
   if (HUMAN && HUMAN.knuckL) { const a = HUMAN.knuckL.getWorldPosition(tmp.a), b = HUMAN.knuckR.getWorldPosition(tmp.b); KITE.barC.addVectors(a, b).multiplyScalar(0.5); KITE.barDir = (KITE.barDir || V3()).subVectors(b, a).normalize(); }
   else { body.localToWorld(KITE.barC.copy(J.aF).add(J.aB).multiplyScalar(0.5)); KITE.barDir = (KITE.barDir || V3()).set(-Math.sin(R.h), 0, Math.cos(R.h)); }
@@ -667,13 +673,13 @@ function updateKite(dt) {
   KITE.pos.copy(KITE.barC).addScaledVector(dir, LINE * Math.cos(el)); KITE.pos.y += LINE * Math.sin(el);
   const Z = tmp.d.subVectors(KITE.pos, KITE.barC).normalize();
   // el morro hacia psi en el plano de la ventana: derecha = E0 (con el viento a la espalda), arriba = hacia el cénit
-  const rA = V3().copy(E0).addScaledVector(Z, -E0.dot(Z)), uA = V3().copy(UP).addScaledVector(Z, -UP.dot(Z));
-  let eR, eU;
-  if (rA.lengthSq() > uA.lengthSq()) { eR = rA.normalize(); eU = V3().crossVectors(eR, Z); }
-  else { eU = uA.normalize(); eR = V3().crossVectors(Z, eU); }
+  const rA = V3().copy(E0).addScaledVector(Z, -E0.dot(Z));
+  // la derecha de la ventana nunca degenera (la cometa no pasa de 60° a los lados): una sola referencia, sin saltos
+  const eR = rA.normalize(), eU = V3().crossVectors(eR, Z);
   const Y = eU.multiplyScalar(Math.cos(KITE.psi)).addScaledVector(eR, Math.sin(KITE.psi)).normalize();
   const X = V3().crossVectors(Y, Z), Yw = V3().crossVectors(Z, X);
-  tmp.m.makeBasis(X, Yw, Z); KITE.g.quaternion.setFromRotationMatrix(tmp.m);
+  tmp.m.makeBasis(X, Yw, Z); tmp.q.setFromRotationMatrix(tmp.m);
+  if (KITE.qOk) KITE.g.quaternion.slerp(tmp.q, clamp(dt * 6, 0, 1)); else { KITE.g.quaternion.copy(tmp.q); KITE.qOk = true; }   // gira suave, sin golpes
   // nunca toca el agua: el punto más bajo de la tela (una punta al girar) se queda al menos a un metro
   let low = 0; const b0k = KITE.base, q = KITE.g.quaternion;
   for (let i = 0; i < b0k.length; i += 3) low = Math.min(low, tmp.a.set(b0k[i], b0k[i + 1], b0k[i + 2]).applyQuaternion(q).y);
