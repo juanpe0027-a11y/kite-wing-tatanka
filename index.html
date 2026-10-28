@@ -87,6 +87,15 @@
   .who { display: flex; align-items: center; gap: 10px; font-size: 17px; text-shadow: 0 1px 6px rgba(0,0,0,.6); }
   .who b { font-family: var(--display); font-weight: 400; font-size: 21px; }
   .opt.who { flex-direction: row; align-items: center; }
+  #riders .av { width: 54px; height: 54px; }
+  .gearsum { border-color: rgba(255,197,107,.75); }
+  .gearsum .chg { margin-left: auto; font-family: var(--stamp); font-size: 13px; color: #ffc56b; white-space: nowrap; padding-left: 8px; }
+  .cards.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .opt .sw { display: block; height: 14px; border-radius: 7px; margin-bottom: 4px; border: 1px solid rgba(255,255,255,.4); }
+  .nickrow { display: flex; align-items: center; gap: 10px; font-family: var(--stamp); font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+  .nickrow input { font: 700 16px var(--mbody); padding: 6px 10px; border-radius: 6px; border: 2px solid rgba(255,255,255,.85); width: 190px; color: #fff; background: rgba(13,22,32,.55); }
+  .nickrow input::placeholder { color: rgba(255,255,255,.75); }
+  .mpmenu { font-family: var(--stamp); font-size: 13px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
   .who .av { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--paper); background: #0e3550 center/cover; flex: none; }
   .h2 { font-family: var(--stamp); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
   .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -146,11 +155,7 @@
 <div id="menu">
   <div class="panel" id="pMain">
     <div class="logo"><div class="a">KITE &amp; WING</div><div class="b">Mundo libre · Puerto de Sagunto</div></div>
-    <div class="h2">Rider</div>
-    <div class="cards" id="riders">
-      <button class="opt who sel" data-r="juanp"><span class="av" style="background-image:url(avatar-juanp.jpg)"></span><span><b>JuanP</b><br><small>Neopreno corto</small></span></button>
-      <button class="opt who" data-r="david"><span class="av" style="background-image:url(avatar-david.jpg)"></span><span><b>David</b><br><small>Casco azul y arnés</small></span></button>
-    </div>
+    <button class="opt who gearsum" id="toGear"><span class="av" id="gearAv" style="background-image:url(avatar-juanp.jpg)"></span><span><b id="gearWho">JuanP</b><br><small id="gearSub">Tabla negra</small></span><span class="chg">Personaje y tabla ›</span></button>
     <div class="h2">Deporte</div>
     <div class="cards" id="modes">
       <button class="opt sel" data-m="kite"><b>Kitesurf</b><em>Twin-tip y cometa con barra</em></button>
@@ -159,16 +164,26 @@
     <div class="h2">Viento</div>
     <div class="cards four" id="winds"></div>
     <label class="windrow"><span id="knLbl">Fuerza 16 nudos</span><input type="range" min="8" max="32" value="16" id="kn"></label>
+    <label class="nickrow" for="nick"><span>Tu nombre</span><input id="nick" maxlength="16" placeholder="Para la sala online" autocomplete="off" enterkeyhint="done"></label>
+    <div class="mpmenu" id="mpMenu">🌊 Sala online: conectando…</div>
     <div class="loadline" id="loadLine">Cargando a JuanP y David… <span id="loadPct">0 %</span><div class="loadbar"><i id="loadBar"></i></div></div>
     <nav class="mainmenu">
       <button class="btn" id="go">A navegar</button>
       <button class="mbtn" id="camBtn">Cámara: detrás</button>
-      <button class="mbtn" id="toGear">Material</button>
       <button class="mbtn" id="toControls">Controles</button>
     </nav>
   </div>
   <div class="panel" id="pGear" hidden>
-    <div class="ptitle">Material</div>
+    <div class="ptitle">Personaje y material</div>
+    <div class="h2">Rider</div>
+    <div class="cards" id="riders">
+      <button class="opt who sel" data-r="juanp"><span class="av" style="background-image:url(avatar-juanp.jpg)"></span><span><b>JuanP</b><br><small>Neopreno corto</small></span></button>
+      <button class="opt who" data-r="david"><span class="av" style="background-image:url(avatar-david.jpg)"></span><span><b>David</b><br><small>Casco azul y arnés</small></span></button>
+    </div>
+    <div class="h2">Tabla de kite</div>
+    <div class="cards three" id="kboards"></div>
+    <div class="h2">Tabla de foil (wing)</div>
+    <div class="cards" id="fboards"></div>
     <div class="h2">Ala del wing</div>
     <div class="cards" id="wings"></div>
     <button class="btn" id="gearOk">Listo</button>

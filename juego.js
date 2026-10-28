@@ -60,10 +60,40 @@ const boardGroup = new T.Group(); inner.add(boardGroup);
 const body = new T.Group(); inner.add(body);
 
 // ---- tablas: la de wake (para el kite) y las de foil
-const kiteBoard = makeBoardMesh(0);
+// el material elegido (tabla de kite y tabla de foil); el ala del wing la guarda WING
+const GEAR = { kb: 'lima', fb: 'turquesa' };
+try { Object.assign(GEAR, JSON.parse(localStorage.getItem('kite-gear') || '{}')); } catch (e) {}
+const KITE_BOARDS = {
+  lima: { name: 'Negra', sub: 'Línea verde lima', sw: '#121314' },
+  roja: { name: 'Roja', sub: 'Franjas blancas', sw: '#d9302c' },
+  blanca: { name: 'Blanca', sub: 'Franja turquesa', sw: '#eeeeea' },
+};
+if (!KITE_BOARDS[GEAR.kb]) GEAR.kb = 'lima';
+function makeKiteBoard(id) {
+  const g = makeBoardMesh(0);
+  if (id === 'roja' || id === 'blanca') {
+    const tex = canvasTex(1024, 320, (c, w, h) => {
+      const red = id === 'roja';
+      c.fillStyle = red ? '#d9302c' : '#eeeeea'; c.fillRect(0, 0, w, h);
+      c.fillStyle = red ? '#ffffff' : '#1fb3c8';
+      if (red) for (const x0 of [0.18, 0.24, 0.7, 0.76]) { c.beginPath(); c.moveTo(w * x0, 0); c.lineTo(w * (x0 + 0.03), 0); c.lineTo(w * (x0 - 0.04), h); c.lineTo(w * (x0 - 0.07), h); c.fill(); }
+      else c.fillRect(0, h * 0.4, w, h * 0.2);
+      c.fillStyle = red ? '#ffffff' : '#0d1620'; c.font = 'italic 900 64px Segoe UI, sans-serif'; c.fillText('TATANKA', w * 0.36, h * (red ? 0.6 : 0.33));
+    });
+    g.traverse(o => { if (o.isMesh && Array.isArray(o.material)) { o.material[0] = o.material[0].clone(); o.material[0].map = tex; } });
+  }
+  return g;
+}
+let kiteBoard = makeKiteBoard(GEAR.kb);
+const FOIL_BOARDS = {
+  turquesa: { name: 'Turquesa', sub: 'La de David', base: '#143f5c', sp: ['#1f7193', '#2f8fae', '#0f2c42', '#48b3cc', '#1a4d6b'], sw: '#1f7193' },
+  blanca: { name: 'Blanca', sub: 'Jaspeada gris', base: '#dfe3e0', sp: ['#b9c4c4', '#8fb7bf', '#f4f6f4', '#c9d3d2', '#9fc9d0'], sw: '#dfe3e0' },
+};
+if (!FOIL_BOARDS[GEAR.fb]) GEAR.fb = 'turquesa';
 // la de foil, como la de David: corta y ancha, punta redondeada y cola recta, cantos y fondo azul turquesa
 // jaspeado, pad negro en toda la cubierta, dos footstraps negros y el foil de carbono negro
-function makeFoilBoard(len, wid, thick) {
+function makeFoilBoard(len, wid, thick, design = 'turquesa') {
+  const FD = FOIL_BOARDS[design] || FOIL_BOARDS.turquesa;
   const g = new T.Group(), sh = new T.Shape(), L = len / 2, W = wid / 2;
   sh.moveTo(-L, -W * 0.8); sh.quadraticCurveTo(-L, -W, -L + 0.08, -W); sh.lineTo(L * 0.2, -W);
   sh.bezierCurveTo(L * 0.75, -W, L, -W * 0.62, L, 0); sh.bezierCurveTo(L, W * 0.62, L * 0.75, W, L * 0.2, W);
@@ -72,11 +102,11 @@ function makeFoilBoard(len, wid, thick) {
   geo.rotateX(-Math.PI / 2); geo.translate(0, -thick + 0.02, 0);
   // azul turquesa jaspeado (fibra de vidrio con pintura salpicada)
   const jas = canvasTex(512, 512, (c, w, h) => {
-    c.fillStyle = '#143f5c'; c.fillRect(0, 0, w, h);
+    c.fillStyle = FD.base; c.fillRect(0, 0, w, h);
     let sd = 11; const rr = () => (sd = (sd * 9301 + 49297) % 233280) / 233280;
     for (let k = 0; k < 2600; k++) {
       const x = rr() * w, y = rr() * h, l = 2 + rr() * 9, a = rr() * TAU;
-      c.strokeStyle = ['#1f7193', '#2f8fae', '#0f2c42', '#48b3cc', '#1a4d6b'][k % 5]; c.globalAlpha = 0.35 + rr() * 0.5; c.lineWidth = 1 + rr() * 1.5;
+      c.strokeStyle = FD.sp[k % 5]; c.globalAlpha = 0.35 + rr() * 0.5; c.lineWidth = 1 + rr() * 1.5;
       c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke();
     }
     c.globalAlpha = 1;
@@ -106,7 +136,7 @@ function makeFoilBoard(len, wid, thick) {
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
-const wingBoard = makeFoilBoard(1.4, 0.6, 0.1);
+let wingBoard = makeFoilBoard(1.4, 0.6, 0.1, GEAR.fb);
 boardGroup.add(kiteBoard, wingBoard);
 
 // ---- el ala de mano (wing): borde de ataque hinchable, tela y botavara central con dos asas
@@ -264,6 +294,7 @@ function setMode(m) {
   R.foil = 0; R.foilOn = false;
   document.querySelectorAll('#modes .opt').forEach(b => b.classList.toggle('sel', b.dataset.m === m));
   $('modeLbl').textContent = MODES[m].name + ' · ' + RIDER_NAME.toUpperCase();
+  gearSum();
   $('bJump').textContent = MODES[m].knob;
   const lt = $('stL').querySelectorAll('text'), w = m === 'kite' ? 'COMETA' : 'ALA'; lt[1].textContent = w + ' ▶'; lt[3].textContent = '◀ ' + w;
   for (const t of ['grab', 'loop']) document.querySelector(`#tricks [data-t="${t}"]`).hidden = m !== 'kite';
@@ -898,7 +929,32 @@ for (const [id, d] of Object.entries(WING_DESIGNS)) {
   c.lineWidth = 7; c.strokeStyle = '#' + d.le.toString(16).padStart(6, '0'); c.beginPath(); c.moveTo(L, 70); c.quadraticCurveTo(160, -40, Rr, 70); c.stroke();
   c.strokeStyle = '#' + d.mid.toString(16).padStart(6, '0'); c.beginPath(); c.moveTo(140, 16); c.lineTo(180, 16); c.stroke();
   b.appendChild(cv); b.insertAdjacentHTML('beforeend', `<b>${d.name}</b><em>${d.sub}</em>`); $('wings').appendChild(b);
-  b.onclick = () => { WING.setDesign(id); document.querySelectorAll('#wings .opt').forEach(x => x.classList.toggle('sel', x === b)); };
+  b.onclick = () => { WING.setDesign(id); document.querySelectorAll('#wings .opt').forEach(x => x.classList.toggle('sel', x === b)); gearSum(); };
+}
+// las tablas: una tarjeta por diseño con su color
+function setBoard(kind, id) {
+  if (kind === 'k') { GEAR.kb = id; boardGroup.remove(kiteBoard); kiteBoard = makeKiteBoard(id); boardGroup.add(kiteBoard); }
+  else { GEAR.fb = id; boardGroup.remove(wingBoard); wingBoard = makeFoilBoard(1.4, 0.6, 0.1, id); boardGroup.add(wingBoard); }
+  kiteBoard.visible = GAME.mode === 'kite'; wingBoard.visible = GAME.mode === 'wing';
+  try { localStorage.setItem('kite-gear', JSON.stringify(GEAR)); } catch (e) {}
+  document.querySelectorAll('#kboards .opt').forEach(x => x.classList.toggle('sel', x.dataset.b === GEAR.kb));
+  document.querySelectorAll('#fboards .opt').forEach(x => x.classList.toggle('sel', x.dataset.b === GEAR.fb));
+  gearSum();
+}
+for (const [box, kind, list] of [['kboards', 'k', KITE_BOARDS], ['fboards', 'f', FOIL_BOARDS]]) {
+  for (const [id, d] of Object.entries(list)) {
+    const b = document.createElement('button'); b.className = 'opt' + (id === (kind === 'k' ? GEAR.kb : GEAR.fb) ? ' sel' : ''); b.dataset.b = id;
+    b.innerHTML = `<i class="sw" style="background:${d.sw}"></i><b>${d.name}</b><em>${d.sub}</em>`;
+    b.onclick = () => setBoard(kind, id); $(box).appendChild(b);
+  }
+}
+// en el menú principal: con quién y con qué material sales
+function gearSum() {
+  if (!$('gearWho')) return;
+  $('gearAv').style.backgroundImage = `url(avatar-${RIDER_NAME}.jpg)`;
+  $('gearWho').textContent = RIDER_NAME === 'david' ? 'David' : 'JuanP';
+  $('gearSub').textContent = GAME.mode === 'kite' ? 'Tabla ' + KITE_BOARDS[GEAR.kb].name.toLowerCase() + ' · cometa Tatanka'
+    : 'Foil ' + FOIL_BOARDS[GEAR.fb].name.toLowerCase() + ' · ala ' + WING_DESIGNS[WING.design].name.toLowerCase();
 }
 $('toGear').onclick = () => showPanel('pGear'); $('gearOk').onclick = () => showPanel('pMain');
 $('toControls').onclick = () => showPanel('pControls'); $('controlsOk').onclick = () => showPanel('pMain');
@@ -935,6 +991,7 @@ function setRider(n) {
   if (HUMAN && HUMAN !== h) body.remove(HUMAN.root);
   HUMAN = h; body.add(h.root);
   $('modeLbl').textContent = MODES[GAME.mode].name + ' · ' + n.toUpperCase();
+  gearSum();
 }
 document.querySelectorAll('#riders .opt').forEach(b => b.onclick = () => setRider(b.dataset.r));
 setRider(RIDER_NAME);
@@ -945,6 +1002,127 @@ async function loadModels() {
   if (!RIDERS[RIDER_NAME]) RIDER_NAME = hj ? 'juanp' : 'david';
   setRider(RIDER_NAME);
   $('loadLine').textContent = hj && hd ? '✅ JuanP y David listos' : hj || hd ? '⚠️ Solo ha cargado ' + (hj ? 'JuanP' : 'David') : '⚠️ No se han podido cargar los riders: recarga la página';
+}
+
+// =====================================================================================
+//  ONLINE: una sala para todos los que navegan (mundo libre). Cada uno manda su posición, su postura,
+//  su cometa o su ala; los demás se ven con su personaje, su material y su nombre encima.
+//  (Firebase: el mismo proyecto que los otros juegos, con su propia sala «kite-wing-tatanka»)
+// =====================================================================================
+const FIREBASE_CONFIG = { apiKey: 'AIzaSyBYEgJnEQxYbgT97giPRuTaRNd5d9vF8tg', authDomain: 'surf-sagunto.firebaseapp.com', databaseURL: 'https://surf-sagunto-default-rtdb.europe-west1.firebasedatabase.app', projectId: 'surf-sagunto', storageBucket: 'surf-sagunto.firebasestorage.app', messagingSenderId: '669179228796', appId: '1:669179228796:web:1e39377632d94fa1c50ff9' };
+const NET = { db: null, me: null, id: 'k' + Math.random().toString(36).slice(2, 10), peers: {}, connected: false, sendT: 0 };
+try { $('nick').value = localStorage.getItem('kite-nick') || ''; } catch (e) {}
+$('nick').addEventListener('change', () => { try { localStorage.setItem('kite-nick', $('nick').value.trim()); } catch (e) {} });
+const myName = () => ($('nick').value.trim() || (RIDER_NAME === 'david' ? 'David' : 'JuanP')).slice(0, 16);
+function loadScript(src) { return new Promise((res, rej) => { const e = document.createElement('script'); e.src = src; e.onload = res; e.onerror = rej; document.head.appendChild(e); }); }
+(async function netStart() {
+  const mp = $('mpMenu');
+  try {
+    if (!window.firebase) { await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js'); await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js'); }
+    firebase.initializeApp(FIREBASE_CONFIG); NET.db = firebase.database();
+    NET.base = NET.db.ref('salas/kite-wing-tatanka'); NET.me = NET.base.child('players/' + NET.id);
+    NET.db.ref('.info/connected').on('value', v => { NET.connected = !!v.val(); if (NET.connected) { NET.me.onDisconnect().remove(); NET.sendT = 0; } netMenu(); });
+    const pl = NET.base.child('players');
+    pl.on('child_added', v => peerData(v.key, v.val())); pl.on('child_changed', v => peerData(v.key, v.val())); pl.on('child_removed', v => peerGone(v.key));
+    addEventListener('pagehide', () => { try { NET.me.remove(); } catch (e) {} });
+    mp.textContent = '🌊 Conectando a la sala…';
+  } catch (e) { mp.textContent = '🌊 Sin conexión: navegas solo'; }
+})();
+function peerData(id, v) {
+  if (id === NET.id || !v || !v.st) return;
+  const P = NET.peers[id] || (NET.peers[id] = { id, vis: null, first: true, pos: V3(), q: new T.Quaternion(), k: V3(), kq: new T.Quaternion(), wl: V3(), wq: new T.Quaternion() });
+  P.st = v.st; P.ch = v.ch; P.seen = performance.now();
+  netMenu();
+}
+function peerGone(id) { const P = NET.peers[id]; if (!P) return; dropPeerVis(P); delete NET.peers[id]; netMenu(); }
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function netMenu() {
+  const ps = Object.values(NET.peers).filter(P => P.st);
+  const names = ps.map(P => esc(P.st.n || 'Rider') + (P.st.p ? '' : ' (en el menú)'));
+  if (NET.connected) $('mpMenu').innerHTML = ps.length ? `🌊 Sala online · ${ps.length + 1} conectados: tú, ${names.join(', ')}` : '🌊 Sala online · de momento solo tú: pasa el enlace a tus amigos y entrad a la vez';
+  let box = $('mpList');
+  if (!box) { box = document.createElement('div'); box.id = 'mpList'; box.style.cssText = 'position:absolute;right:max(14px,env(safe-area-inset-right));top:168px;text-align:right;font:700 12px/1.45 system-ui,sans-serif;letter-spacing:.04em;text-shadow:0 1px 4px rgba(0,0,0,.7);pointer-events:none'; $('hud').appendChild(box); }
+  box.innerHTML = ps.filter(P => P.st.p).map(P => `${esc(P.st.n || 'Rider')} · ${(P.st.sc || 0).toLocaleString('es-ES')}`).join('<br>');
+}
+const nt = { p: V3(), q: new T.Quaternion() };
+function netSend(dt) {
+  if (!NET.connected || !NET.me) return;
+  NET.sendT -= dt; if (NET.sendT > 0) return; NET.sendT = 0.12;
+  const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
+  inner.getWorldPosition(nt.p); inner.getWorldQuaternion(nt.q);
+  const st = {
+    n: myName(), m: GAME.mode, kb: GEAR.kb, fb: GEAR.fb, w: WING.design, p: GAME.running ? 1 : 0, sc: R.score,
+    x: r2(nt.p.x), y: r2(nt.p.y), z: r2(nt.p.z), q: [r3(nt.q.x), r3(nt.q.y), r3(nt.q.z), r3(nt.q.w)],
+    yw: r2(R.yaw), pw: r2(R.power), v: r2(R.v), c: r2(R.charge), s: R.state === 'air' ? 1 : R.state === 'fallen' ? 2 : 0,
+  };
+  if (GAME.mode === 'kite') { const k = KITE.pos, q = KITE.g.quaternion; st.k = [r2(k.x), r2(k.y), r2(k.z)]; st.kq = [r3(q.x), r3(q.y), r3(q.z), r3(q.w)]; }
+  else { const p = WING.g.position, q = WING.g.quaternion; st.wl = [r3(p.x), r3(p.y), r3(p.z)]; st.wq = [r3(q.x), r3(q.y), r3(q.z), r3(q.w)]; }
+  NET.me.set({ ch: RIDER_NAME, st }).catch(() => {});
+}
+function makeLabel(text) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64; const x = c.getContext('2d');
+  x.font = '700 34px system-ui, sans-serif'; x.textAlign = 'center'; x.lineWidth = 6; x.strokeStyle = 'rgba(0,0,0,.6)'; x.strokeText(text, 128, 44); x.fillStyle = '#fff'; x.fillText(text, 128, 44);
+  const sp = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(c), depthTest: false, transparent: true })); sp.scale.set(2.4, 0.6, 1); sp.renderOrder = 5; return sp;
+}
+// el ala de otro jugador, con su diseño (la tela, el borde de ataque y el centro)
+function makeWingFor(id) {
+  const d = WING_DESIGNS[id] || WING_DESIGNS.roja, g = WING.g.clone(true), src = WING.g.children;
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512; drawWing(cv.getContext('2d'), 1024, 512, d);
+  const tex = new T.CanvasTexture(cv); tex.colorSpace = T.SRGBColorSpace;
+  const cm = src[0].material.clone(); cm.map = tex;
+  const le = src[1].material.clone(); le.color.setHex(d.le); const mid = src[2].material.clone(); mid.color.setHex(d.mid);
+  g.traverse(o => { if (!o.isMesh) return; if (o.material === src[0].material) o.material = cm; else if (o.material === src[1].material) o.material = le; else if (o.material === src[2].material) o.material = mid; });
+  g.visible = true; return g;
+}
+function buildPeer(P) {
+  const st = P.st, src = RIDERS[P.ch] || RIDERS.juanp || RIDERS.david; if (!src) return null;
+  const h = setupHuman({ scene: T.SkeletonUtils.clone(src.sc) }); if (!h) return null;
+  const inn = new T.Group(), bodyG = new T.Group(); inn.add(bodyG); bodyG.add(h.root); scene.add(inn);
+  const board = st.m === 'kite' ? makeKiteBoard(st.kb) : makeFoilBoard(1.4, 0.6, 0.1, st.fb); board.visible = true; inn.add(board);
+  let kite = null, lines = null, wing = null;
+  if (st.m === 'kite') {
+    kite = KITE.g.clone(true); kite.visible = true; scene.add(kite);
+    const lg = new T.BufferGeometry(); lg.setAttribute('position', new T.BufferAttribute(new Float32Array(8 * 3), 3));
+    lines = new T.LineSegments(lg, new T.LineBasicMaterial({ color: 0xe9e9e2, transparent: true, opacity: 0.85 })); lines.frustumCulled = false; scene.add(lines);
+  } else { wing = makeWingFor(st.w); bodyG.add(wing); }
+  const label = makeLabel(st.n || 'Rider'); scene.add(label);
+  return { inn, bodyG, h, kite, lines, wing, label, key: [P.ch, st.m, st.kb, st.fb, st.w, st.n].join('|') };
+}
+function dropPeerVis(P) { const V = P.vis; if (!V) return; scene.remove(V.inn, V.label); if (V.kite) scene.remove(V.kite, V.lines); P.vis = null; }
+// la postura de otro jugador: la misma que la nuestra, calculada con sus datos (y dejando la nuestra como estaba)
+function posePeer(V, st, t) {
+  const sv = { yaw: R.yaw, power: R.power, v: R.v, charge: R.charge, state: R.state, air: R.air }, sm = GAME.mode;
+  const wp = WING.g.position.clone(), wq = WING.g.quaternion.clone(), hz = WING.handles.map(o => o.position.z);
+  R.yaw = st.yw; R.power = st.pw; R.v = st.v; R.charge = st.c; R.state = ['ride', 'air', 'fallen'][st.s] || 'ride'; R.air = st.s === 1 ? { grab: 0 } : null; GAME.mode = st.m;
+  try { computePose(t); poseHuman(V.h, J); }
+  finally { Object.assign(R, sv); GAME.mode = sm; WING.g.position.copy(wp); WING.g.quaternion.copy(wq); WING.handles.forEach((o, i) => o.position.z = hz[i]); }
+}
+const pt2 = { a: V3(), b: V3(), c: V3() };
+function updatePeers(dt, t) {
+  for (const id in NET.peers) {
+    const P = NET.peers[id], st = P.st;
+    if (!st || !st.p || performance.now() - P.seen > 6000) { dropPeerVis(P); continue; }
+    const key = [P.ch, st.m, st.kb, st.fb, st.w, st.n].join('|');
+    if (P.vis && P.vis.key !== key) dropPeerVis(P);
+    if (!P.vis) { P.vis = buildPeer(P); P.first = true; if (!P.vis) continue; }
+    const V = P.vis, k = P.first ? 1 : clamp(dt * 8, 0, 1);
+    P.pos.lerp(pt2.a.set(st.x, st.y, st.z), k); P.q.slerp(new T.Quaternion(...st.q).normalize(), k);
+    if (P.pos.distanceTo(pt2.a) > 30) P.pos.copy(pt2.a);   // se ha ido lejos (mar adentro): sin arrastrarlo
+    V.inn.position.copy(P.pos); V.inn.quaternion.copy(P.q); V.bodyG.rotation.y = st.yw;
+    V.inn.updateMatrixWorld(true);
+    posePeer(V, st, t);
+    if (V.wing && st.wl) { P.wl.lerp(pt2.b.fromArray(st.wl), k); P.wq.slerp(new T.Quaternion(...st.wq).normalize(), k); V.wing.position.copy(P.wl); V.wing.quaternion.copy(P.wq); }
+    if (V.kite && st.k) {
+      P.k.lerp(pt2.b.fromArray(st.k), k); P.kq.slerp(new T.Quaternion(...st.kq).normalize(), k);
+      if (P.k.distanceTo(pt2.b) > 40) P.k.copy(pt2.b);
+      V.kite.position.copy(P.k); V.kite.quaternion.copy(P.kq); V.kite.updateMatrixWorld(true);
+      const hand = pt2.c; if (V.h.knuckL) { V.h.knuckL.getWorldPosition(hand); hand.add(V.h.knuckR.getWorldPosition(pt2.b)).multiplyScalar(0.5); } else hand.copy(P.pos).y += 1.2;
+      const arr = V.lines.geometry.attributes.position; let i = 0;
+      for (const a of ['fl', 'fr', 'bl', 'br']) { arr.setXYZ(i++, hand.x, hand.y, hand.z); const e = V.kite.localToWorld(pt2.b.copy(KITE.at[a])); arr.setXYZ(i++, e.x, e.y, e.z); }
+      arr.needsUpdate = true;
+    }
+    V.label.position.set(P.pos.x, P.pos.y + 2.6, P.pos.z);
+  }
 }
 
 // =====================================================================================
@@ -970,6 +1148,7 @@ function frame() {
     updateRider(dt, S);
     placeRider(t);
     updateKite(dt);
+    netSend(dt); updatePeers(dt, t);
     updateSpray(dt);
     updateTrail(dt, t);
     if (GAME.running) { hud(); drawSticks(); drawMap(); }
