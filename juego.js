@@ -61,13 +61,42 @@ const body = new T.Group(); inner.add(body);
 
 // ---- tablas: la de wake (para el kite) y las de foil
 const kiteBoard = makeBoardMesh(0);
-function makeFoilBoard(len, wid, thick, deck, rail) {
+// la de foil, como la de David: corta y ancha, punta redondeada y cola recta, cantos y fondo azul turquesa
+// jaspeado, pad negro en toda la cubierta, dos footstraps negros y el foil de carbono negro
+function makeFoilBoard(len, wid, thick) {
   const g = new T.Group(), sh = new T.Shape(), L = len / 2, W = wid / 2;
-  sh.moveTo(-L, -W * 0.92); sh.lineTo(L * 0.25, -W); sh.quadraticCurveTo(L * 0.95, -W * 0.8, L, 0); sh.quadraticCurveTo(L * 0.95, W * 0.8, L * 0.25, W); sh.lineTo(-L, W * 0.92); sh.lineTo(-L, -W * 0.92);
-  const geo = new T.ExtrudeGeometry(sh, { depth: thick, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2, curveSegments: 12 });
+  sh.moveTo(-L, -W * 0.8); sh.quadraticCurveTo(-L, -W, -L + 0.08, -W); sh.lineTo(L * 0.2, -W);
+  sh.bezierCurveTo(L * 0.75, -W, L, -W * 0.62, L, 0); sh.bezierCurveTo(L, W * 0.62, L * 0.75, W, L * 0.2, W);
+  sh.lineTo(-L + 0.08, W); sh.quadraticCurveTo(-L, W, -L, W * 0.8); sh.lineTo(-L, -W * 0.8);
+  const geo = new T.ExtrudeGeometry(sh, { depth: thick, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.03, bevelSegments: 3, curveSegments: 16 });
   geo.rotateX(-Math.PI / 2); geo.translate(0, -thick + 0.02, 0);
-  const m = new T.Mesh(geo, [MAT(deck, 0.6), MAT(rail, 0.35)]); m.castShadow = true; g.add(m);
-  box(len * 0.55, 0.012, wid * 0.8, MAT(0x2b2f33, 0.9), -L * 0.15, 0.03, 0, g);           // grip de EVA
+  // azul turquesa jaspeado (fibra de vidrio con pintura salpicada)
+  const jas = canvasTex(512, 512, (c, w, h) => {
+    c.fillStyle = '#143f5c'; c.fillRect(0, 0, w, h);
+    let sd = 11; const rr = () => (sd = (sd * 9301 + 49297) % 233280) / 233280;
+    for (let k = 0; k < 2600; k++) {
+      const x = rr() * w, y = rr() * h, l = 2 + rr() * 9, a = rr() * TAU;
+      c.strokeStyle = ['#1f7193', '#2f8fae', '#0f2c42', '#48b3cc', '#1a4d6b'][k % 5]; c.globalAlpha = 0.35 + rr() * 0.5; c.lineWidth = 1 + rr() * 1.5;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke();
+    }
+    c.globalAlpha = 1;
+  });
+  jas.wrapS = jas.wrapT = T.RepeatWrapping; jas.repeat.set(1.6, 1.6);
+  const m = new T.Mesh(geo, MAT(0xffffff, 0.3, 0.05, { map: jas })); m.castShadow = true; g.add(m);
+  // pad negro de cubierta (casi toda la tabla)
+  const pad = new T.Shape(), pl = L - 0.05, pw = W - 0.04;
+  pad.moveTo(-pl, -pw * 0.8); pad.quadraticCurveTo(-pl, -pw, -pl + 0.06, -pw); pad.lineTo(pl * 0.2, -pw);
+  pad.bezierCurveTo(pl * 0.62, -pw, pl * 0.82, -pw * 0.62, pl * 0.82, 0); pad.bezierCurveTo(pl * 0.82, pw * 0.62, pl * 0.62, pw, pl * 0.2, pw);
+  pad.lineTo(-pl + 0.06, pw); pad.quadraticCurveTo(-pl, pw, -pl, pw * 0.8); pad.lineTo(-pl, -pw * 0.8);
+  const pg = new T.ShapeGeometry(pad, 16); pg.rotateX(-Math.PI / 2);
+  const pm = new T.Mesh(pg, MAT(0x16181b, 0.95)); pm.position.y = 0.047; pm.receiveShadow = true; g.add(pm);
+  // dos footstraps negros, por encima de cada pie
+  const strapM = MAT(0x111214, 0.7);
+  for (const sx of [-1, 1]) {
+    const st = new T.Mesh(new T.TorusGeometry(0.07, 0.02, 6, 16, Math.PI), strapM);
+    st.scale.set(1, 0.85, 2.2); st.position.set(sx * 0.28, 0.05, 0.02); g.add(st);
+    box(0.05, 0.03, 0.06, strapM, sx * 0.28 - 0.07, 0.06, 0.02, g); box(0.05, 0.03, 0.06, strapM, sx * 0.28 + 0.07, 0.06, 0.02, g);
+  }
   // foil: mástil, fuselaje, ala delantera y estabilizador (de carbono negro)
   const carb = MAT(0x15171a, 0.35, 0.4), y0 = -thick;
   box(0.035, 0.85, 0.12, carb, -0.05, y0 - 0.425, 0, g);
@@ -77,7 +106,7 @@ function makeFoilBoard(len, wid, thick, deck, rail) {
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
-const wingBoard = makeFoilBoard(1.45, 0.6, 0.11, 0xf2f0ea, 0x19a6c4);
+const wingBoard = makeFoilBoard(1.4, 0.6, 0.1);
 boardGroup.add(kiteBoard, wingBoard);
 
 // ---- el ala de mano (wing): borde de ataque hinchable, tela y botavara central con dos asas
@@ -214,7 +243,9 @@ const KITE = (() => {
   return { g, at, lines, lineGeo, bar, line, ln: 0, cgeo: geo, base: Float32Array.from(pos), NS, NC, az: 0.8, el: 0.6, side: 1, loop: 0, pos: V3(), barC: V3() };
 })();
 
-let HUMAN = null;   // JuanP (juanp.glb) cuando ha cargado
+let HUMAN = null;   // el rider elegido (JuanP o David) cuando ha cargado
+const RIDERS = {}; let RIDER_NAME = 'juanp';
+try { const r = localStorage.getItem('kite-rider'); if (r === 'juanp' || r === 'david') RIDER_NAME = r; } catch (e) {}
 
 // =====================================================================================
 //  ESTADO DEL JUEGO
@@ -232,7 +263,7 @@ function setMode(m) {
   WING.g.visible = m === 'wing';
   R.foil = 0; R.foilOn = false;
   document.querySelectorAll('#modes .opt').forEach(b => b.classList.toggle('sel', b.dataset.m === m));
-  $('modeLbl').textContent = MODES[m].name + ' · JUANP';
+  $('modeLbl').textContent = MODES[m].name + ' · ' + RIDER_NAME.toUpperCase();
   $('bJump').textContent = MODES[m].knob;
   const lt = $('stL').querySelectorAll('text'), w = m === 'kite' ? 'COMETA' : 'ALA'; lt[1].textContent = w + ' ▶'; lt[3].textContent = '◀ ' + w;
   for (const t of ['grab', 'loop']) document.querySelector(`#tricks [data-t="${t}"]`).hidden = m !== 'kite';
@@ -545,7 +576,7 @@ function land(surf) {
 }
 
 // =====================================================================================
-//  POSTURA DE JUANP (en el espacio del cuerpo: mira a +Z, la tabla va a lo largo de X)
+//  POSTURA DEL RIDER (en el espacio del cuerpo: mira a +Z, la tabla va a lo largo de X)
 // =====================================================================================
 const J = {}; for (const k of ['hB', 'hF', 'kB', 'kF', 'fB', 'fF', 'ch', 'hd', 'sB', 'sF', 'eB', 'eF', 'aB', 'aF', 'fw', 'toeB', 'toeF']) J[k] = V3();
 const WP = { C: V3(), X: V3(), Y: V3(), Z: V3(), m: new T.Matrix4() };
@@ -607,6 +638,18 @@ function placeRider(t) {
   body.rotation.y = R.yaw;
   computePose(t);
   riderRoot.updateMatrixWorld(true);
+  // al caerse con el wing, el ala cae al agua y se queda flotando plana a sotavento, con las puntas en el agua
+  if (GAME.mode === 'wing') {
+    const dtp = clamp(t - (WING.tp ?? t), 0, 0.05); WING.tp = t;
+    WING.fk = lerp(WING.fk || 0, R.state === 'fallen' ? 1 : 0, clamp(dtp * (R.state === 'fallen' ? 2.5 : 4), 0, 1));
+    if (WING.fk > 0.002) {
+      const D = WIND.D, wp = V3(R.x + D.x * 1.7, surfaceH(R.x + D.x * 1.7, R.z + D.z * 1.7, t) + 0.38, R.z + D.z * 1.7);
+      const Zw = V3(0, 1, 0), Yw = V3(-D.x, 0, -D.z).normalize(), Xw = V3().crossVectors(Yw, Zw);
+      const qW = new T.Quaternion().setFromRotationMatrix(new T.Matrix4().makeBasis(Xw, Yw, Zw));
+      const qB = body.getWorldQuaternion(new T.Quaternion()).invert();
+      WING.g.position.lerp(body.worldToLocal(wp), WING.fk); WING.g.quaternion.slerp(qB.multiply(qW), WING.fk);
+    }
+  }
   if (HUMAN) poseHuman(HUMAN, J);
 }
 
@@ -631,7 +674,7 @@ function updateKite(dt) {
   if (!GAME.running) tilt = kiteSteer(sd * 0.7, 0.5 + 0.1 * Math.sin(t * 0.4));
   if (R.state === 'ride' && R.charge > 0.05) tilt = lerp(tilt, kiteSteer(KITE.kx * 0.3, 1.3), R.charge);
   if (R.state === 'air') tilt = R.air && R.air.t < 1.1 ? kiteSteer(sd * 0.2, 1.3) : kiteSteer(sd * 0.6, 0.7);
-  if (R.state === 'fallen') tilt = kiteSteer(Math.sign(KITE.kx || 1) * 0.95, 0.15);
+  if (R.state === 'fallen') tilt = kiteSteer(Math.sign(KITE.kx || 1) * 0.95, 0);
   KITE.tilt = lerp(KITE.tilt || 0, tilt, clamp(dt * 3, 0, 1));   // la barra entra poco a poco: sin tirones
   // giro del morro: progresivo con la barra; en el kiteloop da la vuelta entera
   KITE.psi += KITE.tilt * (1.8 + 0.5 * R.power) * dt;
@@ -647,12 +690,13 @@ function updateKite(dt) {
   const outOk = Math.max(0, 0.96 - e0) * 4;   // cuanto más cerca del borde, menos puede seguir hacia fuera: frena sin golpe
   if (out > outOk) { const f = (out - outOk) * clamp(dt * 14, 0, 1); vx -= f * nx; vy -= f * ny; }
   // junto al agua frena la bajada suavemente en vez de chocar
-  const elLo = Math.max(0.12, KITE.elMin || 0) + 0.04;   // un poco de margen para no tener que corregirla de golpe
+  const up = clamp(((KITE.clr ?? 1) + 0.7) / 1.7, 0, 1), elLo = Math.max(0.12 * up, KITE.elMin || 0) + 0.04 * up;   // tras una caída, el suelo sube poco a poco   // un poco de margen para no tener que corregirla de golpe
   if (vy < 0) vy *= smooth(elLo, elLo + 0.2, KITE.el);
   KITE.vx = vx; KITE.vy = vy;
   KITE.vk = Math.hypot(vx, vy);
   KITE.kx += vx * dt;
   KITE.el += vy * HP * 0.8 * dt;
+  if (R.state === 'fallen') KITE.el -= dt * 0.5;   // sin tensión en las líneas pierde sustentación y cae al agua
   // el borde: no lo pasa, y sin tocar la barra el morro se queda mirando hacia fuera (aparcada)
   const e = Math.hypot(KITE.kx, KITE.el / HP);
   if (e > 0.97) { KITE.kx *= 0.97 / e; KITE.el *= 0.97 / e; }
@@ -665,8 +709,8 @@ function updateKite(dt) {
   KITE.e = Math.min(e, 0.97);
   let az = KITE.kx, el = KITE.el;
   const gust = WIND.knNow - WIND.kn;
-  az += 0.012 * Math.sin(t * 1.7 + 1); el = clamp(el + 0.015 * Math.sin(t * 0.9) + 0.006 * gust, 0.08, 1.56);
-  // la barra: entre los nudillos de JuanP
+  az += 0.012 * Math.sin(t * 1.7 + 1); el = clamp(el + 0.015 * Math.sin(t * 0.9) + 0.006 * gust, 0, 1.56);
+  // la barra: entre los nudillos del rider
   if (HUMAN && HUMAN.knuckL) { const a = HUMAN.knuckL.getWorldPosition(tmp.a), b = HUMAN.knuckR.getWorldPosition(tmp.b); KITE.barC.addVectors(a, b).multiplyScalar(0.5); KITE.barDir = (KITE.barDir || V3()).subVectors(b, a).normalize(); }
   else { body.localToWorld(KITE.barC.copy(J.aF).add(J.aB).multiplyScalar(0.5)); KITE.barDir = (KITE.barDir || V3()).set(-Math.sin(R.h), 0, Math.cos(R.h)); }
   const a = az * (camera.aspect < 1 ? Math.PI / 4.5 : Math.PI / 3), dir = tmp.c.copy(D).multiplyScalar(Math.cos(a)).addScaledVector(E0, Math.sin(a));
@@ -683,7 +727,9 @@ function updateKite(dt) {
   // nunca toca el agua: el punto más bajo de la tela (una punta al girar) se queda al menos a un metro
   let low = 0; const b0k = KITE.base, q = KITE.g.quaternion;
   for (let i = 0; i < b0k.length; i += 3) low = Math.min(low, tmp.a.set(b0k[i], b0k[i + 1], b0k[i + 2]).applyQuaternion(q).y);
-  const elReq = Math.asin(clamp((1 - low - KITE.barC.y) / LINE, -1, 1));
+  // navegando, a un metro del agua; si el rider se cae, la cometa cae y toca el agua (y luego vuelve a subir despacio)
+  KITE.clr = lerp(KITE.clr ?? 1, R.state === 'fallen' ? -0.7 : 1, clamp(dt * (R.state === 'fallen' ? 3 : 0.7), 0, 1));
+  const elReq = Math.asin(clamp((KITE.clr - low - KITE.barC.y) / LINE, -1, 1));
   KITE.elMin = elReq - (el - KITE.el);
   if (el < elReq) { el = elReq; KITE.pos.copy(KITE.barC).addScaledVector(dir, LINE * Math.cos(el)); KITE.pos.y += LINE * Math.sin(el); Z.subVectors(KITE.pos, KITE.barC).normalize(); }
   KITE.g.position.copy(KITE.pos);
@@ -875,12 +921,24 @@ $('go').onclick = () => {
 };
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); sprayMat.uniforms.uScale.value = innerHeight * 0.5; });
 
-// ---- carga de JuanP
+// ---- los riders: JuanP y David (se elige en el menú, como las caras del wake)
+function setRider(n) {
+  RIDER_NAME = n; try { localStorage.setItem('kite-rider', n); } catch (e) {}
+  document.querySelectorAll('#riders .opt').forEach(b => b.classList.toggle('sel', b.dataset.r === n));
+  const h = RIDERS[n]; if (!h) return;
+  if (HUMAN && HUMAN !== h) body.remove(HUMAN.root);
+  HUMAN = h; body.add(h.root);
+  $('modeLbl').textContent = MODES[GAME.mode].name + ' · ' + n.toUpperCase();
+}
+document.querySelectorAll('#riders .opt').forEach(b => b.onclick = () => setRider(b.dataset.r));
+setRider(RIDER_NAME);
 async function loadModels() {
-  const g = await loadGLB('juanp.glb?v=1', 3.2e6);
-  const h = g && setupHuman(g);
-  if (h) { HUMAN = h; body.add(h.root); $('loadLine').textContent = '✅ JuanP listo'; }
-  else $('loadLine').textContent = '⚠️ No se ha podido cargar a JuanP: recarga la página';
+  const [gj, gd] = await Promise.all([loadGLB('juanp.glb?v=1', 3.2e6), loadGLB('david.glb?v=1', 3.5e6)]);
+  const hj = gj && setupHuman(gj), hd = gd && setupHuman(gd);
+  if (hj) RIDERS.juanp = hj; if (hd) RIDERS.david = hd;
+  if (!RIDERS[RIDER_NAME]) RIDER_NAME = hj ? 'juanp' : 'david';
+  setRider(RIDER_NAME);
+  $('loadLine').textContent = hj && hd ? '✅ JuanP y David listos' : hj || hd ? '⚠️ Solo ha cargado ' + (hj ? 'JuanP' : 'David') : '⚠️ No se han podido cargar los riders: recarga la página';
 }
 
 // =====================================================================================

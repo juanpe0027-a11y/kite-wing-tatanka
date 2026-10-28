@@ -86,6 +86,7 @@
   .logo .b { font-family: var(--stamp); font-size: clamp(15px, 4vw, 21px); line-height: 1.1; margin-top: 2px; }
   .who { display: flex; align-items: center; gap: 10px; font-size: 17px; text-shadow: 0 1px 6px rgba(0,0,0,.6); }
   .who b { font-family: var(--display); font-weight: 400; font-size: 21px; }
+  .opt.who { flex-direction: row; align-items: center; }
   .who .av { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--paper); background: #0e3550 center/cover; flex: none; }
   .h2 { font-family: var(--stamp); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
   .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -145,7 +146,11 @@
 <div id="menu">
   <div class="panel" id="pMain">
     <div class="logo"><div class="a">KITE &amp; WING</div><div class="b">Mundo libre · Puerto de Sagunto</div></div>
-    <div class="who"><span class="av" style="background-image:url(avatar-juanp.jpg)"></span><span>Navegas con <b>JuanP</b><br><small>Prototipo: tabla de wake y cometa Tatanka</small></span></div>
+    <div class="h2">Rider</div>
+    <div class="cards" id="riders">
+      <button class="opt who sel" data-r="juanp"><span class="av" style="background-image:url(avatar-juanp.jpg)"></span><span><b>JuanP</b><br><small>Neopreno corto</small></span></button>
+      <button class="opt who" data-r="david"><span class="av" style="background-image:url(avatar-david.jpg)"></span><span><b>David</b><br><small>Casco azul y arnés</small></span></button>
+    </div>
     <div class="h2">Deporte</div>
     <div class="cards" id="modes">
       <button class="opt sel" data-m="kite"><b>Kitesurf</b><em>Twin-tip y cometa con barra</em></button>
@@ -154,7 +159,7 @@
     <div class="h2">Viento</div>
     <div class="cards four" id="winds"></div>
     <label class="windrow"><span id="knLbl">Fuerza 16 nudos</span><input type="range" min="8" max="32" value="16" id="kn"></label>
-    <div class="loadline" id="loadLine">Cargando a JuanP… <span id="loadPct">0 %</span><div class="loadbar"><i id="loadBar"></i></div></div>
+    <div class="loadline" id="loadLine">Cargando a JuanP y David… <span id="loadPct">0 %</span><div class="loadbar"><i id="loadBar"></i></div></div>
     <nav class="mainmenu">
       <button class="btn" id="go">A navegar</button>
       <button class="mbtn" id="camBtn">Cámara: detrás</button>
