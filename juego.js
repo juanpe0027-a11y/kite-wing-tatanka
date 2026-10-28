@@ -536,16 +536,19 @@ function updateKite(dt) {
   if (R.charge > 0) { azT *= 1 - 0.65 * R.charge; elT = lerp(elT, 1.2, R.charge); }
   if (R.state === 'air') { azT = KITE.side * 0.2; elT = R.air && R.air.t < 1.5 ? 1.3 : 1.0; }
   if (R.state === 'fallen') { azT = KITE.side * 0.97; elT = 0.12; }
-  KITE.az += (azT - KITE.az) * clamp(dt * 2.6, 0, 1);
-  KITE.el += (elT - KITE.el) * clamp(dt * 3, 0, 1);
+  // ágil pero sin saltos: rápida al principio y con velocidad tope al cruzar la ventana
+  KITE.az += clamp((azT - KITE.az) * clamp(dt * 2.6, 0, 1), -dt * 0.9, dt * 0.9);
+  KITE.el += clamp((elT - KITE.el) * clamp(dt * 3, 0, 1), -dt * 0.8, dt * 0.8);
   let az = KITE.az, el = KITE.el;
   if (KITE.loop > 0) { KITE.loop = Math.max(0, KITE.loop - dt / 1.3); const a = (1 - KITE.loop) * TAU; az += KITE.side * 0.35 * Math.sin(a); el -= 0.32 * (1 - Math.cos(a)); }
   const t = GAME.t, gust = WIND.knNow - WIND.kn;
   // ochos: más amplios y rápidos con poca velocidad (hay que trabajar la cometa) y al girar
-  const ride = R.state === 'ride', amp = ride ? 0.07 + 0.17 * (1 - smooth(4, 10, R.v)) + 0.12 * Math.abs(R.turn) : 0.03;
+  const ride = R.state === 'ride';
+  KITE.amp = lerp(KITE.amp || 0.1, ride ? 0.07 + 0.17 * (1 - smooth(4, 10, R.v)) + 0.12 * Math.abs(R.turn) : 0.03, clamp(dt * 2, 0, 1)); const amp = KITE.amp;
+  KITE.tw = lerp(KITE.tw || 0, ride ? R.turn : 0, clamp(dt * 3, 0, 1));   // el giro, suavizado al despegar y al caer
   KITE.ph = (KITE.ph || 0) + dt * (1.3 + 1.2 * R.power);
-  az += amp * Math.sin(KITE.ph) + 0.03 * Math.sin(t * 1.7 + 1) + (ride ? R.turn * 0.25 : 0);
-  el -= amp * 0.6 * Math.sin(2 * KITE.ph) + (ride ? 0.15 * Math.abs(R.turn) : 0);
+  az += amp * Math.sin(KITE.ph) + 0.03 * Math.sin(t * 1.7 + 1) + KITE.tw * 0.25;
+  el -= amp * 0.6 * Math.sin(2 * KITE.ph) + 0.15 * Math.abs(KITE.tw);
   el = clamp(el + 0.035 * Math.sin(t * 0.9) + 0.015 * Math.sin(t * 2.3) + 0.012 * gust, 0.08, 1.45);
   // la barra: entre los nudillos de JuanP
   if (HUMAN && HUMAN.knuckL) { const a = HUMAN.knuckL.getWorldPosition(tmp.a), b = HUMAN.knuckR.getWorldPosition(tmp.b); KITE.barC.addVectors(a, b).multiplyScalar(0.5); KITE.barDir = (KITE.barDir || V3()).subVectors(b, a).normalize(); }
@@ -553,16 +556,17 @@ function updateKite(dt) {
   const a = az * Math.PI / 2 * 0.95, dir = tmp.c.copy(D).multiplyScalar(Math.cos(a)).addScaledVector(E0, Math.sin(a));
   KITE.pos.copy(KITE.barC).addScaledVector(dir, LINE * Math.cos(el)); KITE.pos.y += LINE * Math.sin(el);
   const Z = tmp.d.subVectors(KITE.pos, KITE.barC).normalize();
-  // el morro: hacia el centro de la ventana (navegando queda casi vertical al agua) y hacia donde vuela
+  // el morro: hacia el centro de la ventana (navegando queda casi vertical al agua)
   const up = V3().copy(UP).addScaledVector(Z, -UP.dot(Z)), cen = V3().copy(D).addScaledVector(Z, -D.dot(Z));
-  const Yd = up.lengthSq() > 1e-4 ? up.normalize().multiplyScalar(ride ? 0.4 : 1.2) : V3();
-  if (cen.lengthSq() > 1e-4) Yd.addScaledVector(cen.normalize(), ride ? 1 : 0.25);
-  const rel = V3().subVectors(KITE.pos, KITE.barC), mv = V3().subVectors(rel, KITE.prev || rel); KITE.prev = rel;
-  mv.addScaledVector(Z, -mv.dot(Z)); const sp = mv.length() / Math.max(dt, 1e-3);
-  if (sp > 0.3) Yd.addScaledVector(mv.normalize(), clamp(sp / 5, 0, 1.6));
-  Yd.addScaledVector(Z, -Yd.dot(Z)); if (Yd.lengthSq() < 1e-4) Yd.copy(D); Yd.normalize();
-  const Y = KITE.Y = (KITE.Y || Yd.clone()).lerp(Yd, clamp(dt * 5, 0, 1)); Y.addScaledVector(Z, -Y.dot(Z)).normalize();
-  Y.applyAxisAngle(Z, -R.turn * 0.5 * KITE.side + 0.05 * Math.sin(t * 1.4));   // la barra la tuerce al girar
+  // sin normalizar cada parte: cerca del cénit 'arriba' casi desaparece y manda el centro, así no se vuelve loca
+  KITE.rw = lerp(KITE.rw ?? 1, ride ? 1 : 0, clamp(dt * 1.5, 0, 1));   // navegando de lado (vertical) o saltando (arriba), con transición suave
+  const Yd = up.multiplyScalar(lerp(1.2, 0.4, KITE.rw)).addScaledVector(cen, lerp(0.25, 1, KITE.rw));
+  Yd.addScaledVector(Z, -Yd.dot(Z)); if (Yd.lengthSq() < 1e-4) Yd.copy(D).addScaledVector(Z, -D.dot(Z)); Yd.normalize();
+  KITE.Y = (KITE.Y || Yd.clone()).lerp(Yd, clamp(dt * 3, 0, 1)); KITE.Y.addScaledVector(Z, -KITE.Y.dot(Z)).normalize();
+  const Y = KITE.Y.clone();   // la inclinación va sobre una copia, para que no se acumule
+  // los ochos y la barra la inclinan, pero con tope: nunca da la vuelta entera
+  KITE.roll = lerp(KITE.roll || 0, clamp(amp * 1.5 * Math.cos(KITE.ph) - R.turn * 0.45 * KITE.side, -0.55, 0.55), clamp(dt * 4, 0, 1)); const roll = KITE.roll;
+  Y.applyAxisAngle(Z, roll + 0.05 * Math.sin(t * 1.4));
   const X = V3().crossVectors(Y, Z), Yw = V3().crossVectors(Z, X);
   tmp.m.makeBasis(X, Yw, Z); KITE.g.quaternion.setFromRotationMatrix(tmp.m); KITE.g.position.copy(KITE.pos);
   KITE.g.updateMatrixWorld(true);
