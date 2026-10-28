@@ -14,7 +14,7 @@ const angDiff = (a, b) => { let d = b - a; d -= TAU * Math.round(d / TAU); retur
 // =====================================================================================
 const compass = b => V3(-Math.cos(b * DEG), 0, -Math.sin(b * DEG));   // rumbo (0 = N, 90 = E) → vector del mundo
 const WINDS = [
-  ['garbi', 'Garbí', 120, 'SE · la marinada'], ['levante', 'Levante', 90, 'E · del mar'],
+  ['garbi', 'Garbí', 120, 'SE · la marinada'], ['levante', 'Levante', 25, 'E · desde el náutico'],
   ['gregal', 'Gregal', 45, 'NE · de Canet'], ['poniente', 'Poniente', 270, 'O · terral, saca mar adentro'],
 ];
 const WIND = { id: 'garbi', name: 'Garbí', dir: 120, kn: 16, knNow: 16, ms: 8, F: V3(), D: V3(), E0: V3() };
@@ -135,7 +135,7 @@ const KITE = (() => {
   scene.add(g);
   // puntos de las líneas: delanteras en el borde de ataque, traseras en las puntas
   const at = { fl: P(-0.45, 0.1), fr: P(0.45, 0.1), bl: P(-1, 0.9), br: P(1, 0.9) };
-  const SEG = 18, NV = (4 * SEG + 1) * 2, lineGeo = new T.BufferGeometry();
+  const SEG = 18, NV = (4 * SEG + 2) * 2, lineGeo = new T.BufferGeometry();
   lineGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(NV * 3), 3));
   lineGeo.setAttribute('color', new T.BufferAttribute(new Float32Array(NV * 3), 3));
   const lines = new T.LineSegments(lineGeo, new T.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 })); lines.frustumCulled = false; scene.add(lines);
@@ -223,6 +223,11 @@ function trackCircle(s) {
   } else if (r < 0.3) { s.ang = null; s.turn = 0; }
 }
 function moveStick(t, e) {
+  if (t.side === 'L') {   // barra: horizontal = girar (sensible), vertical = potencia (más recorrido)
+    const dz = v => Math.sign(v) * Math.max(0, Math.abs(v) - 0.1) / 0.9;
+    IN.L.x = clamp(dz((e.clientX - t.x0) / 60), -1, 1); IN.L.y = clamp(dz(-(e.clientY - t.y0) / 80), -1, 1);
+    return;
+  }
   let dx = (e.clientX - t.x0) / t.rad, dy = -(e.clientY - t.y0) / t.rad;
   const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; }
   if (l < 0.22) { dx = 0; dy = 0; }
@@ -231,11 +236,11 @@ function moveStick(t, e) {
 addEventListener('pointerdown', e => {
   if (!GAME.running || GAME.paused || e.target.closest('button')) return;
   const side = e.clientX < innerWidth / 2 ? 'L' : 'R';
-  for (const [, t] of touches) if (t.side === side) return;
+  for (const [id, t] of touches) if (t.side === side) touches.delete(id);
   // el dedo va por posición sobre el círculo; si se toca lejos, cuenta desde donde se puso
   const b = $(side === 'L' ? 'stL' : 'stR').getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2, rad = b.width * 0.47;
-  const abs = Math.hypot(e.clientX - cx, e.clientY - cy) < rad * 1.5;
-  const t = abs ? { side, x0: cx, y0: cy, rad } : { side, x0: e.clientX, y0: e.clientY, rad: side === 'L' ? 80 : 56 };
+  const abs = side === 'R' && Math.hypot(e.clientX - cx, e.clientY - cy) < rad * 1.5;
+  const t = abs ? { side, x0: cx, y0: cy, rad } : { side, x0: e.clientX, y0: e.clientY, rad: 56 };
   touches.set(e.pointerId, t);
   const s = IN[side]; s.on = true; s.x = s.y = 0; s.ang = null; s.turn = 0;
   $(side === 'L' ? 'stL' : 'stR').classList.add('on');
@@ -465,24 +470,24 @@ function computePose(t) {
   const air = R.state === 'air', fallen = R.state === 'fallen';
   const pull = fallen ? 0 : clamp(R.v / 10, 0, 1) * (0.4 + 0.6 * pw);
   const c = clamp(0.25 + 0.35 * R.charge + (air ? 0.35 : 0) + (fallen ? 0.6 : 0) + (R.air ? R.air.grab * 0.3 : 0), 0, 1);
-  const leanBack = m === 'wing' ? 0.25 * pull : pull;               // con la cometa se cuelga hacia barlovento
+  const leanBack = m === 'wing' ? 0.25 * pull : 0.35 + 0.65 * pull;   // con la cometa se cuelga del arnés hacia barlovento, bien tumbado
   const wide = 0.28;
   J.fF.set(wide, 0.09, 0); J.fB.set(-wide, 0.09, 0);
   J.toeF.set(wide + 0.03, 0.09, J.fF.z + 0.15); J.toeB.set(-wide + 0.05, 0.09, J.fB.z + 0.15);
-  const hy = lerp(0.95, 0.58, c) - 0.06 * leanBack, hz = -0.05 - 0.28 * leanBack;
-  const kz = 0.1 + 0.25 * c + 0.06 * leanBack, ky = lerp(0.52, 0.42, c);
+  const kl = m === 'kite' ? 1 : 0, hy = lerp(0.95, 0.58, c) - (0.06 + 0.16 * kl) * leanBack, hz = -0.05 - (0.28 + 0.12 * kl) * leanBack;
+  const kz = 0.1 + 0.25 * c + (0.06 + 0.1 * kl) * leanBack, ky = lerp(0.52, 0.42, c) - 0.05 * kl * leanBack;
   J.kF.set(wide + 0.02, ky, J.fF.z + kz); J.kB.set(-wide + 0.02, ky, J.fB.z + kz);
   J.hF.set(0.11, hy, hz); J.hB.set(-0.11, hy, hz);
   const tw = m === 'wing' ? 0.55 : 0.3;
   J.fw.set(Math.sin(tw) * sb, 0, Math.cos(tw)).normalize();
-  J.ch.set(sb * 0.05, hy + 0.46 + Math.sin(t * 2.1) * 0.008, hz - 0.14 * leanBack + 0.06 + (m === 'wing' ? 0.06 : 0));
+  J.ch.set(sb * 0.05, hy + 0.46 - 0.06 * kl * leanBack + Math.sin(t * 2.1) * 0.008, hz - (0.14 + 0.2 * kl) * leanBack + 0.06 + (m === 'wing' ? 0.06 : 0));
   const sl = V3(Math.cos(tw), 0, -Math.sin(tw) * sb).multiplyScalar(0.19);
   J.sF.copy(J.ch).add(sl).y += 0.04; J.sB.copy(J.ch).sub(sl).y += 0.04;
   J.hd.copy(J.ch).add(V3(sb * 0.07, 0.27, 0.04));
   // manos según el deporte
   if (m === 'kite') {
-    const bz = 0.4 + 0.2 * (1 - pw);
-    J.aF.copy(J.ch).add(V3(0.22, -0.08, bz)); J.aB.copy(J.ch).add(V3(-0.22, -0.08, bz));
+    const bz = 0.5 + 0.15 * (1 - pw);   // brazos casi estirados, la barra a la altura del pecho
+    J.aF.copy(J.ch).add(V3(0.22, -0.02 + 0.1 * leanBack, bz)); J.aB.copy(J.ch).add(V3(-0.22, -0.02 + 0.1 * leanBack, bz));
     if (R.air && R.air.grab > 0.01) {   // grab: la mano de atrás al canto de los dedos, entre los pies
       riderRoot.updateMatrixWorld(true);
       const g = body.worldToLocal(boardGroup.localToWorld(tmp.a.set(-0.08 * sb, 0.12, 0.2 * R.s)));
@@ -531,23 +536,35 @@ function updateKite(dt) {
   if (R.charge > 0) { azT *= 1 - 0.65 * R.charge; elT = lerp(elT, 1.2, R.charge); }
   if (R.state === 'air') { azT = KITE.side * 0.2; elT = R.air && R.air.t < 1.5 ? 1.3 : 1.0; }
   if (R.state === 'fallen') { azT = KITE.side * 0.97; elT = 0.12; }
-  KITE.az += (azT - KITE.az) * clamp(dt * 1.1, 0, 1);
-  KITE.el += (elT - KITE.el) * clamp(dt * 1.8, 0, 1);
+  KITE.az += (azT - KITE.az) * clamp(dt * 2.6, 0, 1);
+  KITE.el += (elT - KITE.el) * clamp(dt * 3, 0, 1);
   let az = KITE.az, el = KITE.el;
   if (KITE.loop > 0) { KITE.loop = Math.max(0, KITE.loop - dt / 1.3); const a = (1 - KITE.loop) * TAU; az += KITE.side * 0.35 * Math.sin(a); el -= 0.32 * (1 - Math.cos(a)); }
   const t = GAME.t, gust = WIND.knNow - WIND.kn;
-  az += 0.05 * Math.sin(t * 0.63) + 0.025 * Math.sin(t * 1.7 + 1) + R.turn * 0.12 * (R.state === 'ride' ? 1 : 0);
+  // ochos: más amplios y rápidos con poca velocidad (hay que trabajar la cometa) y al girar
+  const ride = R.state === 'ride', amp = ride ? 0.07 + 0.17 * (1 - smooth(4, 10, R.v)) + 0.12 * Math.abs(R.turn) : 0.03;
+  KITE.ph = (KITE.ph || 0) + dt * (1.3 + 1.2 * R.power);
+  az += amp * Math.sin(KITE.ph) + 0.03 * Math.sin(t * 1.7 + 1) + (ride ? R.turn * 0.25 : 0);
+  el -= amp * 0.6 * Math.sin(2 * KITE.ph) + (ride ? 0.15 * Math.abs(R.turn) : 0);
   el = clamp(el + 0.035 * Math.sin(t * 0.9) + 0.015 * Math.sin(t * 2.3) + 0.012 * gust, 0.08, 1.45);
   // la barra: entre los nudillos de JuanP
   if (HUMAN && HUMAN.knuckL) { const a = HUMAN.knuckL.getWorldPosition(tmp.a), b = HUMAN.knuckR.getWorldPosition(tmp.b); KITE.barC.addVectors(a, b).multiplyScalar(0.5); KITE.barDir = (KITE.barDir || V3()).subVectors(b, a).normalize(); }
   else { body.localToWorld(KITE.barC.copy(J.aF).add(J.aB).multiplyScalar(0.5)); KITE.barDir = (KITE.barDir || V3()).set(-Math.sin(R.h), 0, Math.cos(R.h)); }
   const a = az * Math.PI / 2 * 0.95, dir = tmp.c.copy(D).multiplyScalar(Math.cos(a)).addScaledVector(E0, Math.sin(a));
   KITE.pos.copy(KITE.barC).addScaledVector(dir, LINE * Math.cos(el)); KITE.pos.y += LINE * Math.sin(el);
-  const Z = tmp.d.subVectors(KITE.pos, KITE.barC).normalize(), Y = tmp.n.copy(UP).addScaledVector(Z, -UP.dot(Z));
-  if (Y.lengthSq() < 1e-4) Y.copy(D); Y.normalize();
-  Y.applyAxisAngle(Z, (KITE.az - azT) * 0.8 - R.turn * 0.35 * KITE.side + 0.05 * Math.sin(t * 1.4));   // se inclina al moverse por la ventana y al girar
-  const X = V3().crossVectors(Y, Z);
-  tmp.m.makeBasis(X, Y, Z); KITE.g.quaternion.setFromRotationMatrix(tmp.m); KITE.g.position.copy(KITE.pos);
+  const Z = tmp.d.subVectors(KITE.pos, KITE.barC).normalize();
+  // el morro: hacia el centro de la ventana (navegando queda casi vertical al agua) y hacia donde vuela
+  const up = V3().copy(UP).addScaledVector(Z, -UP.dot(Z)), cen = V3().copy(D).addScaledVector(Z, -D.dot(Z));
+  const Yd = up.lengthSq() > 1e-4 ? up.normalize().multiplyScalar(ride ? 0.4 : 1.2) : V3();
+  if (cen.lengthSq() > 1e-4) Yd.addScaledVector(cen.normalize(), ride ? 1 : 0.25);
+  const rel = V3().subVectors(KITE.pos, KITE.barC), mv = V3().subVectors(rel, KITE.prev || rel); KITE.prev = rel;
+  mv.addScaledVector(Z, -mv.dot(Z)); const sp = mv.length() / Math.max(dt, 1e-3);
+  if (sp > 0.3) Yd.addScaledVector(mv.normalize(), clamp(sp / 5, 0, 1.6));
+  Yd.addScaledVector(Z, -Yd.dot(Z)); if (Yd.lengthSq() < 1e-4) Yd.copy(D); Yd.normalize();
+  const Y = KITE.Y = (KITE.Y || Yd.clone()).lerp(Yd, clamp(dt * 5, 0, 1)); Y.addScaledVector(Z, -Y.dot(Z)).normalize();
+  Y.applyAxisAngle(Z, -R.turn * 0.5 * KITE.side + 0.05 * Math.sin(t * 1.4));   // la barra la tuerce al girar
+  const X = V3().crossVectors(Y, Z), Yw = V3().crossVectors(Z, X);
+  tmp.m.makeBasis(X, Yw, Z); KITE.g.quaternion.setFromRotationMatrix(tmp.m); KITE.g.position.copy(KITE.pos);
   KITE.g.updateMatrixWorld(true);
   // barra y líneas: las delanteras salen del centro, las traseras de los extremos
   const bd = KITE.barDir, c = KITE.barC;
@@ -556,6 +573,7 @@ function updateKite(dt) {
   const sag = lerp(1.6, 0.18, tens), split = V3().copy(c).addScaledVector(Z, 1.6);
   KITE.ln = 0;
   KITE.line(c, split, 0, 0, 0);
+  KITE.line(body.localToWorld(V3().addVectors(J.hF, J.hB).multiplyScalar(0.5).add(V3(0, 0.08, 0.12))), c, 0, 0, 0);   // arnés: le tira de la cintura
   KITE.line(split, KITE.g.localToWorld(V3().copy(KITE.at.fl)), sag, t * 23, 0);
   KITE.line(split, KITE.g.localToWorld(V3().copy(KITE.at.fr)), sag, t * 23 + 2, 0);
   KITE.line(V3().copy(c).addScaledVector(bd, -0.26), KITE.g.localToWorld(V3().copy(KITE.at.bl)), sag * 1.1, t * 19 + 4, 1);
