@@ -95,6 +95,7 @@
   .opt.sel { border-color: var(--sun); background: rgba(13,22,32,.88); }
   .opt b { font-family: var(--display); font-weight: 400; font-size: 21px; line-height: 1; }
   .opt em { font-family: var(--stamp); font-style: normal; font-size: 11px; opacity: .85; }
+  .wingPrev { display: block; width: 100%; height: auto; margin-bottom: 4px; background: rgba(247,243,234,.08); }
   .windrow { display: flex; align-items: center; gap: 10px; font-family: var(--stamp); font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
   .windrow input { flex: 1; max-width: 220px; accent-color: #ffc56b; }
   .loadline { font-family: var(--stamp); font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
@@ -157,8 +158,15 @@
     <nav class="mainmenu">
       <button class="btn" id="go">A navegar</button>
       <button class="mbtn" id="camBtn">Cámara: detrás</button>
+      <button class="mbtn" id="toGear">Material</button>
       <button class="mbtn" id="toControls">Controles</button>
     </nav>
+  </div>
+  <div class="panel" id="pGear" hidden>
+    <div class="ptitle">Material</div>
+    <div class="h2">Ala del wing</div>
+    <div class="cards" id="wings"></div>
+    <button class="btn" id="gearOk">Listo</button>
   </div>
   <div class="panel" id="pControls" hidden>
     <div class="ptitle">Controles</div>

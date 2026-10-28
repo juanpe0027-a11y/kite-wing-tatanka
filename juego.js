@@ -81,29 +81,89 @@ const wingBoard = makeFoilBoard(1.45, 0.6, 0.11, 0xf2f0ea, 0x19a6c4);
 boardGroup.add(kiteBoard, wingBoard);
 
 // ---- el ala de mano (wing): borde de ataque hinchable, tela y botavara central con dos asas
+// ---- el ala del wing (como la del usuario): borde de ataque hinchable, strut con asas, dos ventanas a cada lado,
+//      tela roja o verde lima con chevrones grandes, la talla en las puntas y remates cian. Se elige en Material
+const WING_DESIGNS = {
+  roja: { name: 'Roja', sub: '3.5 · la tuya', size: '3.5', cloth: '#e3302c', dark: '#b51f1d', ink: '#ffffff', num: '#e9f25a', dots: 'rgba(255,255,255,.55)', le: 0x24282c, mid: 0x24282c },
+  verde: { name: 'Verde', sub: '4.5 · lima', size: '4.5', cloth: '#a6e34a', dark: '#7fbf2b', ink: '#0d1620', num: '#0d1620', dots: 'rgba(13,22,32,.25)', le: 0x3a2f7a, mid: 0xf2c400 },
+};
+// dibujo de la tela: u a lo largo de la envergadura (0 → 1), v del borde de ataque (0) al de salida (1)
+function drawWing(c, w, h, d) {
+  c.clearRect(0, 0, w, h);
+  c.fillStyle = d.cloth; c.fillRect(0, 0, w, h);
+  // degradados de puntos junto al borde de ataque
+  c.fillStyle = d.dots;
+  for (const u0 of [0.12, 0.3, 0.62, 0.8]) for (let y = 0; y < h * 0.14; y += 7) for (let x = 0; x < w * 0.08; x += 7) { const r = 2.2 * (1 - y / (h * 0.14)); if (r > 0.3) { c.beginPath(); c.arc(w * u0 + x, y + 4, r, 0, TAU); c.fill(); } }
+  // costuras de los paneles
+  c.strokeStyle = d.dark; c.lineWidth = 3;
+  for (const u of [0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9]) { c.beginPath(); c.moveTo(w * u, 0); c.lineTo(w * u, h); c.stroke(); }
+  for (const v of [0.35, 0.68]) { c.beginPath(); c.moveTo(0, h * v); c.lineTo(w, h * v); c.stroke(); }
+  // las dos diagonales grandes desde el centro
+  c.strokeStyle = 'rgba(13,22,32,.75)'; c.lineWidth = 4;
+  c.beginPath(); c.moveTo(w * 0.36, h * 0.12); c.lineTo(w * 0.22, h * 0.86); c.moveTo(w * 0.64, h * 0.12); c.lineTo(w * 0.78, h * 0.86); c.stroke();
+  // ventanas transparentes, dos a cada lado del strut
+  const win = (a, b, c2, d2) => { c.beginPath(); c.moveTo(w * a[0], h * a[1]); c.lineTo(w * b[0], h * b[1]); c.lineTo(w * c2[0], h * c2[1]); c.lineTo(w * d2[0], h * d2[1]); c.closePath(); };
+  c.save(); c.globalCompositeOperation = 'destination-out';
+  for (const s of [-1, 1]) {
+    const m = x => 0.5 + s * x;
+    win([m(0.015), 0.16], [m(0.13), 0.16], [m(0.1), 0.48], [m(0.015), 0.48]); c.fill();
+    win([m(0.015), 0.58], [m(0.08), 0.58], [m(0.065), 0.8], [m(0.015), 0.8]); c.fill();
+  }
+  c.restore();
+  c.save(); c.fillStyle = 'rgba(225,235,240,.28)'; c.strokeStyle = d.dark; c.lineWidth = 3;
+  for (const s of [-1, 1]) {
+    const m = x => 0.5 + s * x;
+    win([m(0.015), 0.16], [m(0.13), 0.16], [m(0.1), 0.48], [m(0.015), 0.48]); c.fill(); c.stroke();
+    win([m(0.015), 0.58], [m(0.08), 0.58], [m(0.065), 0.8], [m(0.015), 0.8]); c.fill(); c.stroke();
+  }
+  c.restore();
+  // chevrones grandes (en hueco) a cada lado
+  c.strokeStyle = d.ink; c.lineWidth = 7; c.lineJoin = 'round';
+  const chev = (cx, cy, s, up) => { const k = up ? -1 : 1; c.beginPath(); c.moveTo(cx - 0.06 * w, cy - k * s); c.lineTo(cx, cy + k * s); c.lineTo(cx + 0.06 * w, cy - k * s); c.stroke();
+    c.beginPath(); c.moveTo(cx - 0.035 * w, cy - k * s * 1.9); c.lineTo(cx + 0.035 * w, cy - k * s * 1.9); c.stroke(); };
+  chev(w * 0.16, h * 0.5, h * 0.09, false); chev(w * 0.84, h * 0.5, h * 0.09, true);
+  // talla junto a las puntas y el nombre en las diagonales
+  c.fillStyle = d.num; c.font = `900 ${h * 0.09}px Arial, sans-serif`; c.textAlign = 'center';
+  c.fillText(d.size, w * 0.05, h * 0.6); c.fillText(d.size, w * 0.95, h * 0.6);
+  c.fillStyle = d.ink; c.font = `900 ${h * 0.055}px Arial, sans-serif`;
+  for (const [x, y, a] of [[0.27, 0.62, -1.38], [0.71, 0.38, 1.38]]) { c.save(); c.translate(w * x, h * y); c.rotate(a); c.fillText('TATANKA', 0, 0); c.restore(); }
+  // remates cian en las puntas y en el centro del borde de salida
+  c.fillStyle = '#25c4e6';
+  for (const s of [0, 1]) { c.beginPath(); c.moveTo(w * s, h * 0.78); c.lineTo(w * s, h); c.lineTo(w * (s ? 0.955 : 0.045), h); c.closePath(); c.fill(); }
+  c.fillRect(w * 0.485, h * 0.93, w * 0.03, h * 0.07);
+}
 const WING = (() => {
-  const g = new T.Group(), S = 1.9, NS = 24, NC = 5;
-  const le = x => 0.72 * (1 - (x / S) ** 2), te = x => -0.78 * Math.pow(1 - (x / S) ** 2, 0.8), ar = x => -0.5 * (x / S) ** 2;
+  const g = new T.Group(), S = 1.9, NS = 28, NC = 6;
+  // planta: borde de ataque en arco, puntas anchas y el de salida en V hacia el centro
+  const le = x => 0.75 * (1 - 0.72 * (x / S) ** 2), te = x => -0.88 + 0.6 * Math.abs(x / S), ar = x => -0.5 * (x / S) ** 2;
   const pos = [], uv = [], idx = [];
   for (let j = 0; j <= NC; j++) for (let i = 0; i <= NS; i++) {
     const x = (i / NS * 2 - 1) * S, v = j / NC, y = lerp(le(x), te(x), v);
-    pos.push(x, y, ar(x) + 0.12 * Math.sin(Math.PI * v) * (1 - (x / S) ** 2)); uv.push(i / NS, v);
+    pos.push(x, y, ar(x) + 0.12 * Math.sin(Math.PI * v) * (1 - (x / S) ** 2)); uv.push(i / NS, 1 - v);
   }
   for (let j = 0; j < NC; j++) for (let i = 0; i < NS; i++) { const a = j * (NS + 1) + i, b = a + 1, c = a + NS + 1, d = c + 1; idx.push(a, c, b, b, c, d); }
   const geo = new T.BufferGeometry(); geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new T.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals();
-  const tex = canvasTex(512, 128, (c, w, h) => {
-    c.fillStyle = '#f4f1e8'; c.fillRect(0, 0, w, h);
-    c.fillStyle = '#19a6c4'; c.fillRect(0, 0, w * 0.18, h); c.fillRect(w * 0.82, 0, w * 0.18, h);
-    c.fillStyle = 'rgba(25,166,196,.55)'; c.fillRect(w * 0.4, 0, w * 0.2, h);
-    c.fillStyle = '#0d1620'; c.font = 'italic 900 34px Segoe UI, sans-serif'; c.fillText('TATANKA', w * 0.33, h * 0.62);
-  });
-  const canopy = new T.Mesh(geo, MAT(0xffffff, 0.6, 0, { map: tex, side: T.DoubleSide, transparent: true, opacity: 0.94 })); canopy.castShadow = true; g.add(canopy);
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512;
+  const tex = new T.CanvasTexture(cv); tex.colorSpace = T.SRGBColorSpace; tex.anisotropy = 8;
+  const canopy = new T.Mesh(geo, MAT(0xffffff, 0.6, 0, { map: tex, side: T.DoubleSide, transparent: true, alphaTest: 0.05 })); canopy.castShadow = true; g.add(canopy);
   const lePts = []; for (let i = 0; i <= 20; i++) { const x = (i / 20 * 2 - 1) * S; lePts.push(V3(x, le(x), ar(x))); }
-  const tube = new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(lePts), 40, 0.09, 8), MAT(0x0d1620, 0.5)); tube.castShadow = true; g.add(tube);
-  const strut = new T.Mesh(new T.TubeGeometry(new T.LineCurve3(V3(0, le(0), 0.02), V3(0, te(0), 0.02)), 4, 0.065, 8), MAT(0x0d1620, 0.5)); g.add(strut);
+  const leMat = MAT(0x24282c, 0.5), midMat = MAT(0x24282c, 0.5), cyan = MAT(0x25c4e6, 0.5);
+  const tube = new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(lePts), 48, 0.09, 8), leMat); tube.castShadow = true; g.add(tube);
+  const mid = new T.Mesh(new T.CylinderGeometry(0.1, 0.1, 0.5, 10), midMat); mid.rotation.z = Math.PI / 2; mid.position.set(0, le(0), 0); g.add(mid);   // la parte central (amarilla en la verde)
+  for (const x of [-1.5, -1.1, -0.7, 0.7, 1.1, 1.5]) { const r = new T.Mesh(new T.TorusGeometry(0.095, 0.014, 6, 12), cyan); r.position.set(x, le(x), ar(x)); r.rotation.y = Math.PI / 2 + Math.atan(-1.44 * x / S / S * 0.75); g.add(r); }
+  const strut = new T.Mesh(new T.TubeGeometry(new T.LineCurve3(V3(0, le(0), 0.02), V3(0, te(0), 0.02)), 4, 0.065, 8), leMat); g.add(strut);
   const handles = [];
-  for (const y of [0.3, -0.35]) { const hm = new T.Mesh(new T.CylinderGeometry(0.02, 0.02, 0.22, 8), MAT(0xff5a4e, 0.5)); hm.position.set(0, y, 0); g.add(hm); handles.push(hm); }
-  return { g, handles, hz: 0.13 };
+  for (const y of [0.3, -0.35]) { const hm = new T.Mesh(new T.CylinderGeometry(0.02, 0.02, 0.22, 8), MAT(0x15171a, 0.5)); hm.position.set(0, y, 0); g.add(hm); handles.push(hm); }
+  function setDesign(id) {
+    const d = WING_DESIGNS[id] || WING_DESIGNS.roja; W.design = WING_DESIGNS[id] ? id : 'roja';
+    drawWing(cv.getContext('2d'), cv.width, cv.height, d); tex.needsUpdate = true;
+    leMat.color.setHex(d.le); midMat.color.setHex(d.mid);
+    try { localStorage.setItem('kite-wing-design', W.design); } catch (e) {}
+  }
+  const W = { g, handles, hz: 0.13, setDesign, design: 'roja' };
+  let saved = 'roja'; try { saved = localStorage.getItem('kite-wing-design') || 'roja'; } catch (e) {}
+  setDesign(saved);
+  return W;
 })();
 body.add(WING.g);
 
@@ -740,7 +800,21 @@ function saveWind() { $('knLbl').textContent = `Fuerza ${WIND.kn} nudos`; try { 
 $('kn').value = WIND.kn; saveWind();
 $('kn').oninput = e => { WIND.kn = +e.target.value; saveWind(); };
 document.querySelectorAll('#modes .opt').forEach(b => b.onclick = () => setMode(b.dataset.m));
-function showPanel(id) { for (const p of ['pMain', 'pControls']) $(p).hidden = p !== id; }
+function showPanel(id) { for (const p of ['pMain', 'pControls', 'pGear']) $(p).hidden = p !== id; }
+// material: diseñador del ala (como el de las caras del wake), con una vista de cada diseño
+for (const [id, d] of Object.entries(WING_DESIGNS)) {
+  const b = document.createElement('button'); b.className = 'opt card' + (id === WING.design ? ' sel' : ''); b.dataset.w = id;
+  const cv = document.createElement('canvas'); cv.width = 320; cv.height = 150; cv.className = 'wingPrev';
+  const tx = document.createElement('canvas'); tx.width = 512; tx.height = 256; drawWing(tx.getContext('2d'), 512, 256, d);
+  const c = cv.getContext('2d'), L = 10, Rr = 310, top = 10, bot = 140;
+  c.beginPath(); c.moveTo(L, 70); c.quadraticCurveTo(160, -40, Rr, 70); c.lineTo(Rr, 92); c.lineTo(160, bot); c.lineTo(L, 92); c.closePath();
+  c.save(); c.clip(); c.drawImage(tx, L, top, Rr - L, bot - top); c.restore();
+  c.lineWidth = 7; c.strokeStyle = '#' + d.le.toString(16).padStart(6, '0'); c.beginPath(); c.moveTo(L, 70); c.quadraticCurveTo(160, -40, Rr, 70); c.stroke();
+  c.strokeStyle = '#' + d.mid.toString(16).padStart(6, '0'); c.beginPath(); c.moveTo(140, 16); c.lineTo(180, 16); c.stroke();
+  b.appendChild(cv); b.insertAdjacentHTML('beforeend', `<b>${d.name}</b><em>${d.sub}</em>`); $('wings').appendChild(b);
+  b.onclick = () => { WING.setDesign(id); document.querySelectorAll('#wings .opt').forEach(x => x.classList.toggle('sel', x === b)); };
+}
+$('toGear').onclick = () => showPanel('pGear'); $('gearOk').onclick = () => showPanel('pMain');
 $('toControls').onclick = () => showPanel('pControls'); $('controlsOk').onclick = () => showPanel('pMain');
 $('camBtn').onclick = () => setCam((CAM.mode + 1) % CAM.names.length);
 function togglePause() { if (!GAME.running) return; GAME.paused = !GAME.paused; msg(GAME.paused ? 'PAUSA' : ''); sfxUpdate(); }
