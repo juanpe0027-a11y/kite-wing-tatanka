@@ -60,7 +60,16 @@
   .stick.on svg .rim { stroke: var(--lima); }
   .stick.on .knob { background: rgba(216,239,155,.32); border-color: var(--lima); }
   .stick.air svg .rim { stroke: #58dfff; fill: rgba(23,106,186,.2); }
-  @media (max-width: 520px) and (orientation: portrait) { .stick { width: 124px; height: 124px; } #stL { width: 190px; height: 108px; } #map { width: 120px; height: 90px; } .bb { bottom: calc(160px + env(safe-area-inset-bottom)); } }
+  /* salto (mantén y suelta) y, en el aire, los botones de trucos en su sitio */
+  #bJump { position: absolute; right: max(46px, env(safe-area-inset-right)); bottom: calc(180px + env(safe-area-inset-bottom)); width: 78px; height: 78px; border-radius: 50%;
+    border: 2px solid var(--lima); color: #fff; font: 900 13px Arial, sans-serif; letter-spacing: .5px; pointer-events: auto; touch-action: none;
+    background: radial-gradient(circle, rgba(216,239,155,.55) calc(var(--c, 0) * 70%), rgba(10,53,65,.3) calc(var(--c, 0) * 70% + 1%)); }
+  #bJump.on { transform: scale(.94); }
+  #tricks { position: absolute; right: max(14px, env(safe-area-inset-right)); bottom: calc(170px + env(safe-area-inset-bottom)); display: none; grid-template-columns: repeat(2, 92px); gap: 8px; pointer-events: auto; }
+  #tricks button { height: 40px; border-radius: 20px; border: 1.5px solid #58dfff; background: rgba(23,106,186,.35); color: #fff; font: 800 11px Arial, sans-serif; touch-action: none; }
+  #tricks button.on { background: rgba(88,223,255,.6); }
+  #hud.inAir #tricks { display: grid; } #hud.inAir #bJump { display: none; }
+  @media (max-width: 520px) and (orientation: portrait) { .stick { width: 124px; height: 124px; } #stL { width: 190px; height: 108px; } #bJump { bottom: calc(205px + env(safe-area-inset-bottom)); right: 30px; } #tricks { bottom: calc(205px + env(safe-area-inset-bottom)); } #map { width: 120px; height: 90px; } .bb { bottom: calc(160px + env(safe-area-inset-bottom)); } }
 
   /* menú: pegatinas sobre la escena, abajo a la izquierda (estilo del wake) */
   #menu { position: fixed; inset: 0; z-index: 5; display: flex; align-items: flex-end; justify-content: flex-start;
@@ -121,6 +130,12 @@
   <div id="trick"></div>
   <div id="msg"></div>
   <div class="stick" id="stL"></div>
+  <button id="bJump" data-t="jump">SALTO</button>
+  <div id="tricks">
+    <button data-t="back">BACKROLL</button><button data-t="front">FRONTROLL</button>
+    <button data-t="spinL">⟲ SPIN</button><button data-t="spinR">SPIN ⟳</button>
+    <button data-t="grab">GRAB</button><button data-t="loop">KITELOOP</button>
+  </div>
   <div class="stick" id="stR"></div>
   <div class="bb"><button id="bPause" aria-label="Pausa">❚❚</button><button id="bCam" aria-label="Cambiar cámara">👁</button><button id="bSnd" aria-label="Sonido">🔊</button><button id="bMenu" aria-label="Menú">☰</button></div>
 </div>
@@ -148,13 +163,11 @@
     <div class="ptitle">Controles</div>
     <div class="ctl">
       <span class="h">Qué</span><span class="h">Móvil</span><span class="h">Teclado</span>
-      <b>Dirección</b><span>Círculo izquierdo a los lados: orzar o arribar</span><span><kbd>←</kbd> <kbd>→</kbd></span>
-      <b>Potencia</b><span>Círculo izquierdo arriba (cazar la barra o el ala) o abajo (soltar)</span><span><kbd>↑</kbd> <kbd>↓</kbd></span>
-      <b>Salto / pump</b><span>Mantén el centro del círculo derecho y suelta. Kite: la cometa sube y saltas. Foil: si vas lento, bombeas para despegar; volando, un saltito</span><span><kbd>Espacio</kbd></span>
-      <b>Rolls</b><span>En el aire, círculo derecho arriba (back roll) o abajo (front roll)</span><span><kbd>W</kbd> <kbd>S</kbd></span>
-      <b>Spin</b><span>En el aire, círculo derecho a los lados</span><span><kbd>A</kbd> <kbd>D</kbd></span>
-      <b>Grab</b><span>Kite: en el aire, mantén el círculo izquierdo</span><span><kbd>G</kbd></span>
-      <b>Kiteloop</b><span>Kite: en el aire, haz un círculo con el derecho</span><span><kbd>L</kbd></span>
+      <b>Tabla</b><span>Círculo derecho a los lados: ceñir más (orzar) o ceñir menos (arribar)</span><span><kbd>←</kbd> <kbd>→</kbd></span>
+      <b>Cometa</b><span>Barra de la izquierda a los lados: llevas la cometa por el cielo. Metida en la zona de potencia tira más; al otro lado, frena</span><span><kbd>A</kbd> <kbd>D</kbd></span>
+      <b>Potencia</b><span>Barra hacia abajo (tirar) o hacia arriba (soltar)</span><span><kbd>↑</kbd> <kbd>↓</kbd></span>
+      <b>Salto / pump</b><span>Botón SALTO: mantén para cargar y suelta. Foil: si vas lento, bombeas para despegar; volando, un saltito</span><span><kbd>Espacio</kbd></span>
+      <b>Trucos</b><span>En el aire salen los botones: backroll, frontroll, spin, grab y kiteloop. Mantén pulsado para girar; suelta y acaba la vuelta</span><span><kbd>W</kbd> <kbd>S</kbd> <kbd>Q</kbd> <kbd>E</kbd> <kbd>G</kbd> <kbd>L</kbd></span>
       <b>Virar y trasluchar</b><span>Gira cruzando el viento de cara (virada, necesitas velocidad) o de popa (trasluchada): el rider cambia de lado</span><span></span>
       <b>Aterrizar</b><span>Suelta los giros a tiempo: si caes torcido, al agua</span><span></span>
       <b>Cámara, pausa</b><span>Botones de abajo</span><span><kbd>C</kbd> <kbd>P</kbd></span>

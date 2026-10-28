@@ -173,7 +173,8 @@ function setMode(m) {
   R.foil = 0; R.foilOn = false;
   document.querySelectorAll('#modes .opt').forEach(b => b.classList.toggle('sel', b.dataset.m === m));
   $('modeLbl').textContent = MODES[m].name + ' · JUANP';
-  const k = document.querySelector('#stR .knob'); if (k) k.textContent = MODES[m].knob;
+  $('bJump').textContent = MODES[m].knob;
+  for (const t of ['grab', 'loop']) document.querySelector(`#tricks [data-t="${t}"]`).hidden = m !== 'kite';
   try { localStorage.setItem('kite-mode', m); } catch (e) {}
 }
 
@@ -212,7 +213,7 @@ function msg(t, sec = 0) { const el = $('msg'); el.textContent = t; el.style.opa
 //  CONTROLES: círculo izquierdo = dirección (x) y potencia (y) · derecho = salto/pump y trucos
 // =====================================================================================
 const mkStick = () => ({ x: 0, y: 0, on: false, ang: null, turn: 0, circleEv: 0, relEv: false });
-const IN = { L: mkStick(), R: mkStick(), kb: {} };
+const IN = { L: mkStick(), R: mkStick(), kb: {}, btn: {} };
 const touches = new Map();
 function trackCircle(s) {
   const r = Math.hypot(s.x, s.y);
@@ -265,21 +266,24 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { IN.kb[e.code] = false; if (e.code === 'Space') IN.kbRel = true; });
 function readSticks() {
   const k = IN.kb;
+  const b = IN.btn;
   const S = {
-    L: { x: IN.L.x, y: -IN.L.y, on: IN.L.on || !!k.KeyG },
-    R: { x: IN.R.x, y: IN.R.y, hold: (IN.R.on && Math.hypot(IN.R.x, IN.R.y) < 0.35) || !!k.Space, rel: false, circle: IN.R.circleEv || IN.kbLoop },
+    L: { x: IN.L.x, y: -IN.L.y, on: !!b.grab || !!k.KeyG },   // barra: x mueve la cometa, y es la potencia
+    B: IN.R.x,                                                  // mando derecho: la tabla (ceñir más o menos)
+    R: { x: 0, y: 0, hold: !!b.jump || !!k.Space, rel: false, circle: b.loopEv || IN.kbLoop },   // salto y trucos
   };
-  if (k.ArrowLeft) S.L.x = -1; if (k.ArrowRight) S.L.x = 1; if (k.ArrowUp) S.L.y = 1; if (k.ArrowDown) S.L.y = -1;
-  if (k.KeyW) S.R.y = 1; if (k.KeyS) S.R.y = -1; if (k.KeyA) S.R.x = -1; if (k.KeyD) S.R.x = 1;
-  S.R.rel = (IN.R.relEv || IN.kbRel) && R.charge > 0.06;
-  IN.R.relEv = IN.L.relEv = false; IN.kbRel = false; IN.R.circleEv = 0; IN.kbLoop = false;
+  if (k.KeyA) S.L.x = -1; if (k.KeyD) S.L.x = 1; if (k.ArrowUp) S.L.y = 1; if (k.ArrowDown) S.L.y = -1;
+  if (k.ArrowLeft) S.B = -1; if (k.ArrowRight) S.B = 1;
+  if (b.back || k.KeyW) S.R.y = 1; if (b.front || k.KeyS) S.R.y = -1; if (b.spinL || k.KeyQ) S.R.x = -1; if (b.spinR || k.KeyE) S.R.x = 1;
+  S.R.rel = (b.jumpRel || IN.kbRel) && R.charge > 0.06;
+  b.jumpRel = b.loopEv = false; IN.R.relEv = IN.L.relEv = false; IN.kbRel = false; IN.R.circleEv = 0; IN.kbLoop = false;
   if (!GAME.running) return autopilot();
   return S;
 }
 // en el menú navega solo, a un descuartelar, sin acercarse a la costa
 function autopilot() {
   const F = WIND.F, phi = Math.atan2(F.z, F.x);
-  if (R.state === 'fallen') { if (R.fallT > 2) getUp(); return { L: { x: 0, y: 0 }, R: { x: 0, y: 0 } }; }
+  if (R.state === 'fallen') { if (R.fallT > 2) getUp(); return { L: { x: 0, y: 0 }, B: 0, R: { x: 0, y: 0 } }; }
   let s = R.s;
   const want = sd => { const h = phi + sd * 100 * DEG; return Math.sin(h); };   // componente z del rumbo
   if (R.z > SHORE_Z - 140 && want(s) > -0.2) s = -s;                          // hacia el mar
@@ -287,7 +291,7 @@ function autopilot() {
   if (R.x > PIER_X - 200 && Math.cos(phi + s * 100 * DEG) > 0) s = -s;
   if (R.x < MARINA_X + 150 && Math.cos(phi + s * 100 * DEG) < 0) s = -s;
   const d = angDiff(R.h, phi + s * 100 * DEG);
-  return { L: { x: clamp(d * 1.6, -1, 1), y: 0.1 }, R: { x: 0, y: 0 } };
+  return { L: { x: 0, y: 0.1 }, B: clamp(d * 1.6, -1, 1), R: { x: 0, y: 0 } };
 }
 // dibujo de los sticks
 function stickSVG(words, knob) {
@@ -297,23 +301,29 @@ function stickSVG(words, knob) {
 }
 // la barra de la cometa: puño rojo (izquierda) y azul (derecha), líneas hacia arriba y el chicken loop
 $('stL').innerHTML = `<svg viewBox="-110 -62 220 124" aria-hidden="true"><rect class="rim" x="-106" y="-58" width="212" height="116" rx="22"/>
-  <text x="0" y="-44">SOLTAR</text><text x="88" y="-26">ARRIBAR</text><text x="0" y="52">TIRAR · POTENCIA</text><text x="-88" y="-26">ORZAR</text>
+  <text x="0" y="-44">SOLTAR</text><text x="84" y="-26">COMETA ▶</text><text x="0" y="52">TIRAR · POTENCIA</text><text x="-84" y="-26">◀ COMETA</text>
   <g id="barG"><path class="ln" d="M-74,0 L-14,-60 M74,0 L14,-60 M-5,0 L-3,-60 M5,0 L3,-60"/>
   <rect class="bar" x="-80" y="-5" width="160" height="10" rx="5"/><rect x="-80" y="-5" width="30" height="10" rx="5" fill="#ff5a4e"/>
   <rect x="50" y="-5" width="30" height="10" rx="5" fill="#2a8bff"/><circle cx="0" cy="13" r="7" class="loop"/></g></svg><i class="knob"></i>`;
-$('stR').innerHTML = stickSVG(['BACKROLL', 'SPIN', 'FRONTROLL', 'SPIN'], 'SALTO');
+$('stR').innerHTML = stickSVG(['', 'CEÑIR -', 'TABLA', 'CEÑIR +'], '');
+// botones: salto (o pump) y, en el aire, los trucos; se mantienen pulsados
+for (const el of document.querySelectorAll('#bJump, #tricks button')) {
+  const t = el.dataset.t, on = e => { e.preventDefault(); IN.btn[t] = true; if (t === 'loop') IN.btn.loopEv = true; el.classList.add('on'); };
+  const off = () => { if (IN.btn[t] && t === 'jump') IN.btn.jumpRel = true; IN.btn[t] = false; el.classList.remove('on'); };
+  el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off); el.addEventListener('pointerleave', off);
+}
 function drawSticks() {
   $('stR').querySelector('.knob').style.transform = `translate(${(IN.R.x * 40).toFixed(1)}px, ${(-IN.R.y * 40).toFixed(1)}px)`;
-  const bx = IN.L.on ? IN.L.x : clamp(R.turn, -1, 1), by = IN.L.on ? IN.L.y : 0;
+  const bx = IN.L.on ? IN.L.x : IN.kb.KeyA ? -1 : IN.kb.KeyD ? 1 : 0, by = IN.L.on ? IN.L.y : 0;
   $('barG').setAttribute('transform', `translate(0 ${(-by * 22).toFixed(1)}) rotate(${(bx * 26).toFixed(1)})`);
-  $('stR').classList.toggle('air', R.state === 'air');
-  $('stL').classList.toggle('air', R.state === 'air' && GAME.mode === 'kite');
+  $('hud').classList.toggle('inAir', R.state === 'air');
+  $('bJump').style.setProperty('--c', R.charge.toFixed(2));
 }
-// ORZAR/ARRIBAR dependen de por qué lado entra el viento: se recolocan en cada amura
+// ceñir más (orzar) o menos (arribar) depende de por qué lado entra el viento: se recolocan en cada amura
 function stickWords() {
-  const sTxt = $('stL').querySelectorAll('text');
+  const sTxt = $('stR').querySelectorAll('text');
   // girar a la derecha (x+) es arribar si el viento viene por la izquierda (s = +1)
-  sTxt[1].textContent = R.s > 0 ? 'ARRIBAR' : 'ORZAR'; sTxt[3].textContent = R.s > 0 ? 'ORZAR' : 'ARRIBAR';
+  sTxt[1].textContent = R.s > 0 ? 'CEÑIR -' : 'CEÑIR +'; sTxt[3].textContent = R.s > 0 ? 'CEÑIR +' : 'CEÑIR -';
 }
 
 // =====================================================================================
@@ -344,6 +354,7 @@ function updateRider(dt, S) {
   if (Math.abs(cr) > 0.06) { const ns = Math.sign(cr); if (ns !== R.s) { R.s = ns; if (R.state !== 'fallen') maneuver(R.twa); stickWords(); } }
   // la barra de la cometa tarda más en notarse que el ala, que va en las manos
   R.power = lerp(R.power, clamp(0.6 + 0.4 * S.L.y, 0.15, 1), clamp(dt * (GAME.mode === 'kite' ? 2.2 : 3.5), 0, 1));
+  R.kiteIn = GAME.mode === 'kite' && R.state !== 'fallen' ? S.L.x : 0;
   const surf = surfaceH(R.x, R.z, GAME.t);
 
   if (R.state === 'fallen') {
@@ -353,7 +364,7 @@ function updateRider(dt, S) {
     if (R.fallT > 2.6) getUp();
   } else if (R.state === 'ride') {
     // giro con inercia: la velocidad de giro sube y baja poco a poco; curva suave para el dedo
-    const kite = GAME.mode === 'kite', inp = Math.sign(S.L.x) * Math.pow(Math.abs(S.L.x), 1.4);
+    const kite = GAME.mode === 'kite', st = clamp(S.B + (kite ? 0 : 0.6 * S.L.x), -1, 1), inp = Math.sign(st) * Math.pow(Math.abs(st), 1.4);
     const maxRate = kite ? 0.26 + 0.035 * Math.min(R.v, 10) : 0.3 + (R.foilOn ? 0.035 : 0.02) * Math.min(R.v, 10);
     R.turn = lerp(R.turn, inp, clamp(dt * 2.5, 0, 1));
     R.yr += (R.turn * maxRate - R.yr) * clamp(dt * (kite ? 1.7 : 1.4), 0, 1);
@@ -363,7 +374,8 @@ function updateRider(dt, S) {
     const pf = (0.55 + 0.45 * R.power) * (0.45 + 0.55 * smooth(7, 17, WIND.knNow));
     let vt = WIND.ms * polar(R.twa) * pf * M.k;
     if (M.foil && !R.foilOn) vt *= 0.6;                         // sin volar, el casco frena
-    if (GAME.mode === 'kite' && Math.abs(KITE.az) < 0.4) vt += 1.5;   // la cometa cruzando la zona de potencia
+    // la cometa tira más metida en la zona de potencia; si la pasas al otro lado, frena
+    if (kite) vt *= KITE.az * KITE.side < -0.05 ? 0.35 : 0.8 + 0.5 * (1 - Math.abs(KITE.az));
     vt = Math.min(vt, 22);
     // inercia: acelera más despacio que frena; volando en el foil se planea y frena poco
     const acc = 0.3, dec = kite ? 0.6 : R.foilOn ? 0.3 : 0.75;
@@ -533,6 +545,10 @@ function updateKite(dt) {
   const D = WIND.D, E0 = WIND.E0, H = tmp.H.set(Math.cos(R.h), 0, Math.sin(R.h));
   const hs = H.dot(E0); if (Math.abs(hs) > 0.15) KITE.side = Math.sign(hs);
   let azT = KITE.side * lerp(0.9, 0.6, R.power), elT = lerp(0.72, 0.42, R.power);
+  // la barra la mueve por la ventana: a la derecha o a la izquierda de la pantalla, y al moverla baja (picado)
+  const camR = -H.z * E0.x + H.x * E0.z >= 0 ? 1 : -1;
+  KITE.u = lerp(KITE.u || 0, (R.kiteIn || 0) * camR * 1.1, clamp(dt * 2.2, 0, 1));
+  azT = clamp(azT + KITE.u, -0.97, 0.97); elT -= 0.22 * Math.abs(KITE.u);
   if (R.charge > 0) { azT *= 1 - 0.65 * R.charge; elT = lerp(elT, 1.2, R.charge); }
   if (R.state === 'air') { azT = KITE.side * 0.2; elT = R.air && R.air.t < 1.5 ? 1.3 : 1.0; }
   if (R.state === 'fallen') { azT = KITE.side * 0.97; elT = 0.12; }
@@ -544,10 +560,10 @@ function updateKite(dt) {
   const t = GAME.t, gust = WIND.knNow - WIND.kn;
   // ochos: más amplios y rápidos con poca velocidad (hay que trabajar la cometa) y al girar
   const ride = R.state === 'ride';
-  KITE.amp = lerp(KITE.amp || 0.1, ride ? 0.07 + 0.17 * (1 - smooth(4, 10, R.v)) + 0.12 * Math.abs(R.turn) : 0.03, clamp(dt * 2, 0, 1)); const amp = KITE.amp;
-  KITE.tw = lerp(KITE.tw || 0, ride ? R.turn : 0, clamp(dt * 3, 0, 1));   // el giro, suavizado al despegar y al caer
+  KITE.amp = lerp(KITE.amp || 0.1, ride ? 0.07 + 0.17 * (1 - smooth(4, 10, R.v)) : 0.03, clamp(dt * 2, 0, 1)); const amp = KITE.amp;
+  KITE.tw = lerp(KITE.tw || 0, ride ? (R.kiteIn || 0) : 0, clamp(dt * 3, 0, 1));   // la barra, suavizada al despegar y al caer
   KITE.ph = (KITE.ph || 0) + dt * (1.3 + 1.2 * R.power);
-  az += amp * Math.sin(KITE.ph) + 0.03 * Math.sin(t * 1.7 + 1) + KITE.tw * 0.25;
+  az += amp * Math.sin(KITE.ph) + 0.03 * Math.sin(t * 1.7 + 1);
   el -= amp * 0.6 * Math.sin(2 * KITE.ph) + 0.15 * Math.abs(KITE.tw);
   el = clamp(el + 0.035 * Math.sin(t * 0.9) + 0.015 * Math.sin(t * 2.3) + 0.012 * gust, 0.08, 1.45);
   // la barra: entre los nudillos de JuanP
@@ -565,7 +581,7 @@ function updateKite(dt) {
   KITE.Y = (KITE.Y || Yd.clone()).lerp(Yd, clamp(dt * 3, 0, 1)); KITE.Y.addScaledVector(Z, -KITE.Y.dot(Z)).normalize();
   const Y = KITE.Y.clone();   // la inclinación va sobre una copia, para que no se acumule
   // los ochos y la barra la inclinan, pero con tope: nunca da la vuelta entera
-  KITE.roll = lerp(KITE.roll || 0, clamp(amp * 1.5 * Math.cos(KITE.ph) - R.turn * 0.45 * KITE.side, -0.55, 0.55), clamp(dt * 4, 0, 1)); const roll = KITE.roll;
+  KITE.roll = lerp(KITE.roll || 0, clamp(amp * 1.5 * Math.cos(KITE.ph) - KITE.tw * 0.5 * KITE.side, -0.6, 0.6), clamp(dt * 4, 0, 1)); const roll = KITE.roll;
   Y.applyAxisAngle(Z, roll + 0.05 * Math.sin(t * 1.4));
   const X = V3().crossVectors(Y, Z), Yw = V3().crossVectors(Z, X);
   tmp.m.makeBasis(X, Yw, Z); KITE.g.quaternion.setFromRotationMatrix(tmp.m); KITE.g.position.copy(KITE.pos);
