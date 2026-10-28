@@ -320,6 +320,7 @@ addEventListener('keydown', e => {
   IN.kb[e.code] = true;
   if (e.code === 'KeyC') nextCam();
   if (e.code === 'KeyP') togglePause();
+  if (e.code === 'KeyM') toOpenSea();
   if (e.code === 'KeyL') IN.kbLoop = true;
   if (e.code === 'Enter' && R.state === 'fallen') getUp();
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
@@ -660,7 +661,7 @@ function updateKite(dt) {
   // la barra: entre los nudillos de JuanP
   if (HUMAN && HUMAN.knuckL) { const a = HUMAN.knuckL.getWorldPosition(tmp.a), b = HUMAN.knuckR.getWorldPosition(tmp.b); KITE.barC.addVectors(a, b).multiplyScalar(0.5); KITE.barDir = (KITE.barDir || V3()).subVectors(b, a).normalize(); }
   else { body.localToWorld(KITE.barC.copy(J.aF).add(J.aB).multiplyScalar(0.5)); KITE.barDir = (KITE.barDir || V3()).set(-Math.sin(R.h), 0, Math.cos(R.h)); }
-  const a = az * Math.PI / 3, dir = tmp.c.copy(D).multiplyScalar(Math.cos(a)).addScaledVector(E0, Math.sin(a));
+  const a = az * (camera.aspect < 1 ? Math.PI / 4.5 : Math.PI / 3), dir = tmp.c.copy(D).multiplyScalar(Math.cos(a)).addScaledVector(E0, Math.sin(a));
   KITE.pos.copy(KITE.barC).addScaledVector(dir, LINE * Math.cos(el)); KITE.pos.y += LINE * Math.sin(el);
   const Z = tmp.d.subVectors(KITE.pos, KITE.barC).normalize();
   // el morro hacia psi en el plano de la ventana: derecha = E0 (con el viento a la espalda), arriba = hacia el cénit
@@ -837,6 +838,16 @@ $('toControls').onclick = () => showPanel('pControls'); $('controlsOk').onclick 
 $('camBtn').onclick = () => setCam((CAM.mode + 1) % CAM.names.length);
 function togglePause() { if (!GAME.running) return; GAME.paused = !GAME.paused; msg(GAME.paused ? 'PAUSA' : ''); sfxUpdate(); }
 $('bPause').onclick = togglePause; $('bCam').onclick = nextCam;
+// mar adentro: te lleva al punto del mapa más lejos de la costa, navegando al través
+function toOpenSea() {
+  if (!GAME.running) return;
+  const phi = Math.atan2(WIND.F.z, WIND.F.x);
+  R.x = 400; R.z = -2350; R.y = 0; R.vy = 0; R.air = null; R.state = 'ride'; R.v = 6; R.charge = 0; R.gybe = 0; R.foil = 0; R.foilOn = false;
+  R.h = phi + R.s * 100 * DEG; R.yr = 0; R.turn = 0; trick.rotation.set(0, 0, 0);
+  trail.pts.length = 0; CAM.off = CAM.lookOff = null; CAM.h = R.h; snapKite(); KITE.prev = null;
+  say('MAR ADENTRO<small>a 2,4 km de la playa</small>', 'info', 1.8);
+}
+$('bSea').onclick = toOpenSea;
 $('bMenu').onclick = () => { GAME.running = false; GAME.paused = false; $('hud').hidden = true; $('menu').hidden = false; showPanel('pMain'); msg(''); };
 $('go').onclick = () => {
   sfxInit(); if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume();
