@@ -304,7 +304,7 @@ function setMode(m) {
 // ---- OLAS EN PUERTO SILES: series de 4 olas de mar de fondo (sin romper) que entran hacia la playa junto a la escollera,
 //      una cada 7,5 s y luego una calma. Van con la hora (Date.now): todos los de la sala ven las mismas olas a la vez
 const SPOT = { x: 30, z0: SHORE_Z - 345, c: 6, life: 17, half: 150, w: 9 };
-const WAVES = { on: true, list: [], cyc: 46, offs: [0, 7.5, 15, 22.5], lastSet: -1 };
+const WAVES = { on: true, list: [], cyc: 36, offs: [0, 7.5, 15, 22.5], lastSet: -1 };   // series seguidas: casi sin calma
 try { WAVES.on = localStorage.getItem('kite-waves') !== 'off'; } catch (e) {}
 function updateWaves() {
   WAVES.list.length = 0;
@@ -312,7 +312,7 @@ function updateWaves() {
     const now = Date.now() / 1000, cyc = Math.floor(now / WAVES.cyc), tc = now - cyc * WAVES.cyc;
     for (const back of [1, 0]) for (let k = 0; k < 4; k++) {
       const age = tc + back * WAVES.cyc - WAVES.offs[k];
-      if (age >= 0 && age < SPOT.life) WAVES.list.push({ t: age, s: SPOT.z0 + SPOT.c * age, amp: (1.8 + 0.3 * ((cyc - back + k) % 3)) * smooth(0, 2, age) * (1 - smooth(SPOT.life - 3, SPOT.life, age)) });
+      if (age >= 0 && age < SPOT.life) WAVES.list.push({ t: age, s: SPOT.z0 + SPOT.c * age, amp: (2.2 + 0.3 * ((cyc - back + k) % 3)) * smooth(0, 2, age) * (1 - smooth(SPOT.life - 3, SPOT.life, age)) });
     }
     // aviso al empezar cada serie, si estás por la zona
     if (tc < 3 && WAVES.lastSet !== cyc) { WAVES.lastSet = cyc; if (GAME.running && Math.hypot(R.x - SPOT.x, R.z - SPOT.z0) < 600) say('¡SERIE EN PUERTO SILES!<small>4 olas: ponte delante y cógelas</small>', 'info', 2); }
@@ -1053,17 +1053,29 @@ function toOpenSea() {
   say('MAR ADENTRO<small>a 2,4 km de la playa</small>', 'info', 1.8);
 }
 $('bSea').onclick = toOpenSea;
+// ---- A LAS OLAS: te pone en el pico de Puerto Siles, justo delante de la ola que viene (o donde nacen, si hay calma)
+function toWaves(quiet) {
+  if (!WAVES.on) wavesBtn('on');
+  updateWaves();
+  const w = WAVES.list.filter(v => v.t < 9).sort((a, b) => a.t - b.t)[0];
+  const phi = Math.atan2(WIND.F.z, WIND.F.x);
+  R.x = SPOT.x + 40; R.z = w ? w.s + 20 : SPOT.z0 + 6; R.y = 0; R.vy = 0; R.air = null; R.state = 'ride'; R.v = 8; R.charge = 0; R.gybe = 0;
+  if (GAME.mode === 'wing') { R.foilOn = true; R.foil = 1; }   // ya volando: así la coges a la primera
+  R.h = phi + R.s * 100 * DEG; R.yr = 0; R.turn = 0; trick.rotation.set(0, 0, 0);
+  trail.pts.length = 0; CAM.off = CAM.lookOff = null; CAM.h = R.h; snapKite(); KITE.prev = null;
+  if (quiet) return;
+  if (w) say('¡A LAS OLAS!<small>viene una por detrás: navega y te coge</small>', 'info', 2);
+  else { const tc = Date.now() / 1000 % WAVES.cyc; say('PICO DE PUERTO SILES<small>la próxima serie llega en ' + Math.ceil(WAVES.cyc - tc) + ' s</small>', 'info', 2.2); }
+}
+$('bWaves').onclick = () => { if (GAME.running) toWaves(false); };
+addEventListener('keydown', e => { if (e.code === 'KeyO' && GAME.running) toWaves(false); });
 $('bMenu').onclick = () => { try { recSave(); } catch (e) {} GAME.running = false; GAME.paused = false; $('hud').hidden = true; $('menu').hidden = false; showPanel('pMain'); msg(''); };
 $('go').onclick = () => {
   sfxInit(); if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume();
   $('menu').hidden = true; $('hud').hidden = false; GAME.running = true; GAME.paused = false;
   R.score = 0; CAM.off = null; CAM.h = R.h; setCam(CAM.mode); stickWords(); snapKite();
   REC.lastScore = 0; REC.counted = false; REC.bestTrick = ''; REC.bestTrickPts = 0; REC.saveT = 10;
-  if (WAVES.on && !crewList().length) {   // con olas, sales en el pico de Puerto Siles, por fuera de donde entran
-    R.x = SPOT.x + 25; R.z = SPOT.z0 - 20; R.v = 7; R.state = 'ride'; R.air = null; R.y = 0; R.vy = 0;
-    const phi = Math.atan2(WIND.F.z, WIND.F.x); R.h = phi + R.s * 100 * DEG; trick.rotation.set(0, 0, 0);
-    trail.pts.length = 0; CAM.off = CAM.lookOff = null; CAM.h = R.h; snapKite();
-  }
+  if (WAVES.on && !crewList().length) toWaves(true);   // con olas, sales en el pico de Puerto Siles, delante de la ola que viene
   if (crewNear() > 300) toCrew(true);
   if (R.state === 'fallen') getUp();
   msg(MODES[GAME.mode].name + ' · VIENTO ' + WIND.name.toUpperCase() + ' ' + WIND.kn + ' KN', 2.2);
