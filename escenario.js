@@ -10,7 +10,7 @@ T.ColorManagement.enabled = true;   // vendor.js lo apaga para el juego de surf;
 const $ = id => document.getElementById(id);
 // versión: si el móvil tiene guardado un index.html viejo (de otra versión que juego.js), se recarga sin caché
 // (como mucho dos veces seguidas, para no entrar en bucle si la web aún no se ha actualizado)
-const KITE_VER = '20';
+const KITE_VER = '21';
 (() => {
   const m = document.querySelector('meta[name="kite-ver"]');
   try {
@@ -170,12 +170,24 @@ waterMat.onBeforeCompile = sh => {
     .replace('#include <common>', '#include <common>\n' + WATER_GLSL + '\nvarying vec3 vW; varying float vFoam; varying float vSw;')
     .replace('#include <beginnormal_vertex>', `
       vec3 w0 = (modelMatrix * vec4(position, 1.0)).xyz;
+      #ifdef WATER_FAR
+      float hC = 0.0;   // el agua de lejos va plana: sus triángulos miden cientos de metros y, con olas, se levantaban y tapaban al rider
+      #else
       float hC = wavesH(w0.xz);
+      #endif
       const float E = 0.3;
+      #ifdef WATER_FAR
+      float hX = 0.0, hZ = 0.0;
+      #else
       float hX = wavesH(w0.xz + vec2(E, 0.0)), hZ = wavesH(w0.xz + vec2(0.0, E));
+      #endif
       vec3 objectNormal = normalize(vec3(-(hX - hC) / E, 1.0, -(hZ - hC) / E));
       vFoam = smoothstep(0.08, 0.2, chopH(w0.xz) / max(uChop, 0.01));   // la ola grande no rompe: sin espuma
+      #ifdef WATER_FAR
+      vSw = 0.0;
+      #else
       vSw = swellH(w0.xz);
+      #endif
       vW = w0 + vec3(0.0, hC, 0.0);`)
     .replace('#include <begin_vertex>', 'vec3 transformed = position + vec3(0.0, hC, 0.0);');
   sh.fragmentShader = sh.fragmentShader
@@ -212,8 +224,11 @@ function makeWaterGrid(R, N) {
 }
 const waterNear = new T.Mesh(makeWaterGrid(190, IS_MOBILE ? 150 : 230), waterMat);
 waterNear.receiveShadow = true; waterNear.frustumCulled = false;
-const farGeo = new T.PlaneGeometry(14000, 14000, 60, 60); farGeo.rotateX(-Math.PI / 2); farGeo.translate(0, -0.25, 0);
-const waterFar = new T.Mesh(farGeo, waterMat); waterFar.frustumCulled = false;
+// el agua de lejos: plana y por debajo de los valles de las olas de cerca (así nunca asoma por encima del rider)
+const farGeo = new T.PlaneGeometry(14000, 14000, 60, 60); farGeo.rotateX(-Math.PI / 2); farGeo.translate(0, -0.55, 0);
+const waterFarMat = new T.MeshStandardMaterial({ color: 0x0c3f52, roughness: 0.06, metalness: 0.0, envMapIntensity: 1.15 });
+waterFarMat.onBeforeCompile = waterMat.onBeforeCompile; waterFarMat.defines = { WATER_FAR: '' };
+const waterFar = new T.Mesh(farGeo, waterFarMat); waterFar.frustumCulled = false;
 scene.add(waterNear, waterFar);
 
 // --- la misma ola en JS (altura del agua bajo la tabla)
