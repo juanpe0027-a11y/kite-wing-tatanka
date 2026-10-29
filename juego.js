@@ -736,7 +736,7 @@ function computePose(t) {
     if (fk > 0.01) {
       WP.m.makeBasis(V3(0, 0, sb), V3(sb, 0, 0), V3(0, 1, 0));
       WING.g.quaternion.slerp(new T.Quaternion().setFromRotationMatrix(WP.m), fk);
-      WING.g.position.lerp(V3().copy(J.ch).add(V3(-sb * 0.38, 0.4, 0.06)), fk);
+      WING.g.position.lerp(V3().copy(J.ch).add(V3(-sb * 0.62, 0.24, -0.38)), fk);   // detrás del rider: hacia la cola y por su espalda, a la altura del hombro
     }
     const hz2 = -WING.hz;   // las asas por el lado del rider
     for (const hm of WING.handles) hm.position.z = hz2;
