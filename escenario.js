@@ -132,13 +132,17 @@ const NOISE = makeNoiseTextures();
 // ---------------------------------------------------------------- agua: olas del viento (sin barca ni estela)
 const U = { uTime: { value: 0 }, uChop: { value: 1 }, uCaps: { value: 0.2 }, tNrm: { value: NOISE.normal }, tNoise: { value: NOISE.noise },
   // la ola grande (mar de fondo, sin romper): dirección (x, z), posición de la cresta y altura · centro, ancho y largo de la cresta
-  uSwA: { value: new T.Vector4(0, 1, -9999, 0) }, uSwB: { value: new T.Vector4(0, 8, 90, 0) } };
+  uSwA: { value: [0, 1, 2].map(() => new T.Vector4(0, 1, -9999, 0)) }, uSwB: { value: [0, 1, 2].map(() => new T.Vector4(0, 8, 90, 0)) } };   // hasta 3 olas a la vez
 const WATER_GLSL = /* glsl */`
-  uniform float uTime; uniform float uChop; uniform vec4 uSwA; uniform vec4 uSwB;
+  uniform float uTime; uniform float uChop; uniform vec4 uSwA[3]; uniform vec4 uSwB[3];
   float swellH(vec2 p){
-    if (uSwA.w < 0.001) return 0.0;
-    float a = (dot(p, uSwA.xy) - uSwA.z) / uSwB.y, b = (dot(p, vec2(-uSwA.y, uSwA.x)) - uSwB.x) / uSwB.z;
-    return uSwA.w * exp(-a * a) * exp(-b * b * b * b);
+    float h = 0.0;
+    for (int i = 0; i < 3; i++) {
+      if (uSwA[i].w < 0.001) continue;
+      float a = (dot(p, uSwA[i].xy) - uSwA[i].z) / uSwB[i].y, b = (dot(p, vec2(-uSwA[i].y, uSwA[i].x)) - uSwB[i].x) / uSwB[i].z;
+      h += uSwA[i].w * exp(-a * a) * exp(-b * b * b * b);
+    }
+    return h;
   }
   float chopH(vec2 p){
     return uChop * (0.075*sin(dot(p, vec2(0.110, 0.046)) + uTime*0.95)
@@ -203,9 +207,13 @@ scene.add(waterNear, waterFar);
 
 // --- la misma ola en JS (altura del agua bajo la tabla)
 function swellH(x, z) {
-  const A = U.uSwA.value, B = U.uSwB.value; if (A.w < 0.001) return 0;
-  const a = (x * A.x + z * A.y - A.z) / B.y, b = (-x * A.y + z * A.x - B.x) / B.z;
-  return A.w * Math.exp(-a * a) * Math.exp(-b * b * b * b);
+  let h = 0;
+  for (let i = 0; i < 3; i++) {
+    const A = U.uSwA.value[i], B = U.uSwB.value[i]; if (A.w < 0.001) continue;
+    const a = (x * A.x + z * A.y - A.z) / B.y, b = (-x * A.y + z * A.x - B.x) / B.z;
+    h += A.w * Math.exp(-a * a) * Math.exp(-b * b * b * b);
+  }
+  return h;
 }
 function wavesH(x, z, t) {
   return swellH(x, z) + U.uChop.value * (0.075 * Math.sin(x * 0.110 + z * 0.046 + t * 0.95) + 0.050 * Math.sin(-x * 0.060 + z * 0.150 + t * 1.15)

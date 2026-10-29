@@ -301,28 +301,40 @@ function setMode(m) {
   try { localStorage.setItem('kite-mode', m); } catch (e) {}
 }
 
-// ---- OLAS GRANDES: cada 20-35 s llega una ola de mar de fondo, larga y sin romper; pasa junto a ti y a los 11 s se va
-const SWELL = { t: 0, life: 11, next: 14, on: false, c: 6.5, amp: 0 };
-function updateSwell(dt) {
-  const A = U.uSwA.value, B = U.uSwB.value;
-  if (!SWELL.on) {
-    if (GAME.running) SWELL.next -= dt;
-    if (SWELL.next > 0 || !GAME.running || R.state === 'fallen') return;
-    // viene de mar adentro hacia la costa, algo torcida con el viento, y nace 24 m detrás de ti (llega en pocos segundos)
-    let dx = WIND.D.x * 0.5, dz = WIND.D.z * 0.5 + 1; const l = Math.hypot(dx, dz); dx /= l; dz /= l;
-    // siempre algo más rápida que tú, para que te alcance; y desplazada hacia donde vas, para que la encuentres
-    const vx = Math.cos(R.h) * R.v, vz = Math.sin(R.h) * R.v, along = vx * dx + vz * dz, side = -vx * dz + vz * dx;
-    SWELL.c = clamp(along + 4, 6, 12);
-    A.x = dx; A.y = dz; A.z = R.x * dx + R.z * dz - 24;
-    B.x = -R.x * dz + R.z * dx + side * 5; B.y = 9; B.z = 160;
-    SWELL.on = true; SWELL.t = 0; SWELL.amp = 1.8 + Math.random() * 0.8;
-    say('¡VIENE UNA OLA!<small>ponte delante y navega con ella</small>', 'info', 2);
-    return;
+// ---- OLAS EN PUERTO SILES: series de 4 olas de mar de fondo (sin romper) que entran hacia la playa junto a la escollera,
+//      una cada 7,5 s y luego una calma. Van con la hora (Date.now): todos los de la sala ven las mismas olas a la vez
+const SPOT = { x: 30, z0: SHORE_Z - 345, c: 6, life: 17, half: 150, w: 9 };
+const WAVES = { on: true, list: [], cyc: 46, offs: [0, 7.5, 15, 22.5], lastSet: -1 };
+try { WAVES.on = localStorage.getItem('kite-waves') !== 'off'; } catch (e) {}
+function updateWaves() {
+  WAVES.list.length = 0;
+  if (WAVES.on) {
+    const now = Date.now() / 1000, cyc = Math.floor(now / WAVES.cyc), tc = now - cyc * WAVES.cyc;
+    for (const back of [1, 0]) for (let k = 0; k < 4; k++) {
+      const age = tc + back * WAVES.cyc - WAVES.offs[k];
+      if (age >= 0 && age < SPOT.life) WAVES.list.push({ t: age, s: SPOT.z0 + SPOT.c * age, amp: (1.8 + 0.3 * ((cyc - back + k) % 3)) * smooth(0, 2, age) * (1 - smooth(SPOT.life - 3, SPOT.life, age)) });
+    }
+    // aviso al empezar cada serie, si estás por la zona
+    if (tc < 3 && WAVES.lastSet !== cyc) { WAVES.lastSet = cyc; if (GAME.running && Math.hypot(R.x - SPOT.x, R.z - SPOT.z0) < 600) say('¡SERIE EN PUERTO SILES!<small>4 olas: ponte delante y cógelas</small>', 'info', 2); }
   }
-  SWELL.t += dt; A.z += SWELL.c * dt;
-  A.w = SWELL.amp * smooth(0, 1.5, SWELL.t) * (1 - smooth(SWELL.life - 2, SWELL.life, SWELL.t));
-  if (SWELL.t >= SWELL.life) { SWELL.on = false; A.w = 0; SWELL.next = 18 + Math.random() * 15; }
+  for (let i = 0; i < 3; i++) {
+    const w = WAVES.list[i], A = U.uSwA.value[i], B = U.uSwB.value[i];
+    if (w) { A.set(0, 1, w.s, w.amp); B.set(-SPOT.x, SPOT.w, SPOT.half, 0); } else A.w = 0;
+  }
 }
+// la ola que tienes debajo (en su cara o a punto de cogerla), si la hay
+function waveUnder(x, z) {
+  let best = null;
+  for (const w of WAVES.list) {
+    const a = (z - w.s) / SPOT.w, lat = (x - SPOT.x) / SPOT.half;
+    if (w.amp < 0.6 || Math.abs(lat) > 0.95 || a < -1.3 || a > 2.2) continue;
+    if (!best || Math.abs(a - 0.7) < Math.abs(best.a - 0.7)) best = { w, a };
+  }
+  return best;
+}
+const wavesBtn = id => { WAVES.on = id === 'on'; try { localStorage.setItem('kite-waves', WAVES.on ? 'on' : 'off'); } catch (e) {} document.querySelectorAll('#waves .opt').forEach(b => b.classList.toggle('sel', b.dataset.w === id)); };
+document.querySelectorAll('#waves .opt').forEach(b => b.onclick = () => wavesBtn(b.dataset.w));
+wavesBtn(WAVES.on ? 'on' : 'off');
 
 // ---- costa y obstáculos (fuera de eso, todo el mar es navegable)
 const GROIN_PTS = (() => { const c = new T.QuadraticBezierCurve3(V3(GROIN_X, 0, SHORE_Z + 10), V3(GROIN_X - 10, 0, SHORE_Z - 85), V3(GROIN_X + 45, 0, SHORE_Z - 105)); return c.getPoints(40); })();
@@ -560,16 +572,22 @@ function updateRider(dt, S) {
       if (!R.foilOn && R.v > M.takeoff + 0.3) { R.foilOn = true; say('¡VOLANDO!', 'clean', 1.2); }
       if (R.foilOn && R.v < M.takeoff - 0.9) { R.foilOn = false; say('AL AGUA', 'info', 1); sfxSplash(0.4); }
     }
-    // la ola grande: en su cara (la que baja hacia delante) te empuja como al surfear; con el foil subes por ella
-    const SA = U.uSwA.value; let push = 0;
-    if (swellH(R.x, R.z) > 0.12) {
-      const e = 0.8, sl = (swellH(R.x + SA.x * e, R.z + SA.y * e) - swellH(R.x - SA.x * e, R.z - SA.y * e)) / (2 * e);
-      push = Math.max(0, -sl) * (0.35 + 0.65 * Math.max(0, H.x * SA.x + H.z * SA.y));
+    // surfear las olas de Puerto Siles: en su cara la ola te lleva hacia la playa (y te sujeta ahí, para que sea fácil);
+    // tú vas de lado a lado con la dirección. Si giras hacia mar adentro, te sales por detrás de la ola
+    const wu = waveUnder(R.x, R.z), can = !!wu && H.z > -0.35 && (GAME.mode === 'kite' || R.foilOn || R.v > 4);
+    R.surf = lerp(R.surf || 0, can ? 1 : 0, clamp(dt * (can ? 2.5 : 3), 0, 1));
+    if (wu && R.surf > 0.02) {
+      R.z += SPOT.c * R.surf * dt;                                                   // la ola te lleva
+      R.z += (wu.w.s + 0.7 * SPOT.w - R.z) * clamp(dt * 1.5 * R.surf, 0, 1);         // y te mantiene en su cara
+      R.v = lerp(R.v, Math.max(R.v, 9.5), clamp(dt * 1.2 * R.surf, 0, 1));          // la bajada te da velocidad
     }
-    R.v += push * 10 * dt;
-    R.wave = lerp(R.wave || 0, clamp(push * 3, 0, 1), clamp(dt * 3, 0, 1));
-    if (R.wave > 0.15) R.waveT = (R.waveT || 0) + dt;
-    else if (R.waveT) { const wt = R.waveT; R.waveT = 0; if (wt > 1 && GAME.running) { const pts = Math.round(wt * 120); R.score += pts; say('SURFEANDO LA OLA<small>' + wt.toFixed(1) + ' S · +' + pts + '</small>', 'clean', 1.6); } }
+    R.wave = R.surf;
+    if (R.surf > 0.5 && !R.surfOn) { R.surfOn = true; say('¡OLA COGIDA!<small>ve de lado a lado</small>', 'clean', 1.2); }
+    if (R.surf > 0.4) R.waveT = (R.waveT || 0) + dt;
+    else if (R.surf < 0.2 && R.surfOn) {
+      R.surfOn = false; const wt = R.waveT || 0; R.waveT = 0;
+      if (wt > 1 && GAME.running) { const pts = Math.round(wt * 120); R.score += pts; if (pts > (REC.bestTrickPts || 0)) { REC.bestTrickPts = pts; REC.bestTrick = 'Ola ' + wt.toFixed(0) + ' s'; } say('SURFEANDO LA OLA<small>' + wt.toFixed(1) + ' S · +' + pts + '</small>', 'clean', 1.6); }
+    }
     R.foil = lerp(R.foil, R.foilOn ? 1 + 0.45 * R.wave : 0, clamp(dt * 1.6, 0, 1));
     // cargar el salto (o el pump) con el centro del círculo derecho
     if (S.R.hold) R.charge = Math.min(1, R.charge + dt * 1.4);
@@ -702,10 +720,18 @@ function computePose(t) {
     WP.Z.crossVectors(WP.X, WP.Y);
     if (WP.Z.z < 0) { WP.X.negate(); WP.Z.negate(); }   // el lado cóncavo (puntas y asas) mira al rider
     WP.m.makeBasis(WP.X, WP.Y, WP.Z); WING.g.quaternion.setFromRotationMatrix(WP.m); WING.g.position.copy(WP.C);
+    // surfeando la ola: el ala plana por encima, cogida solo con la mano de atrás, con el borde de ataque hacia delante
+    const fk = R.surf || 0;
+    if (fk > 0.01) {
+      WP.m.makeBasis(V3(0, 0, sb), V3(sb, 0, 0), V3(0, 1, 0));
+      WING.g.quaternion.slerp(new T.Quaternion().setFromRotationMatrix(WP.m), fk);
+      WING.g.position.lerp(V3().copy(J.ch).add(V3(-sb * 0.38, 0.4, 0.06)), fk);
+    }
     const hz2 = -WING.hz;   // las asas por el lado del rider
     for (const hm of WING.handles) hm.position.z = hz2;
-    const hF = V3(0, 0.3, hz2).applyQuaternion(WING.g.quaternion).add(WP.C), hB = V3(0, -0.35, hz2).applyQuaternion(WING.g.quaternion).add(WP.C);
+    const WC = WING.g.position, hF = V3(0, 0.3, hz2).applyQuaternion(WING.g.quaternion).add(WC), hB = V3(0, -0.35, hz2).applyQuaternion(WING.g.quaternion).add(WC);
     if (sb > 0) { J.aF.copy(hF); J.aB.copy(hB); } else { J.aB.copy(hF); J.aF.copy(hB); }
+    if (fk > 0.01) J[sb > 0 ? 'aF' : 'aB'].lerp(V3().copy(J.ch).add(V3(sb * 0.62, -0.06, 0.24)), fk);   // la mano de delante, estirada hacia delante
   }
   if (fallen) { J.aF.copy(J.sF).add(V3(0.3, 0.1, 0.3)); J.aB.copy(J.sB).add(V3(-0.3, 0.1, 0.3)); }
   J.eF.lerpVectors(J.sF, J.aF, 0.5).add(V3(0.04, -0.07, 0.03)); J.eB.lerpVectors(J.sB, J.aB, 0.5).add(V3(-0.04, -0.07, 0.03));
@@ -1033,6 +1059,11 @@ $('go').onclick = () => {
   $('menu').hidden = true; $('hud').hidden = false; GAME.running = true; GAME.paused = false;
   R.score = 0; CAM.off = null; CAM.h = R.h; setCam(CAM.mode); stickWords(); snapKite();
   REC.lastScore = 0; REC.counted = false; REC.bestTrick = ''; REC.bestTrickPts = 0; REC.saveT = 10;
+  if (WAVES.on && !crewList().length) {   // con olas, sales en el pico de Puerto Siles, por fuera de donde entran
+    R.x = SPOT.x + 25; R.z = SPOT.z0 - 20; R.v = 7; R.state = 'ride'; R.air = null; R.y = 0; R.vy = 0;
+    const phi = Math.atan2(WIND.F.z, WIND.F.x); R.h = phi + R.s * 100 * DEG; trick.rotation.set(0, 0, 0);
+    trail.pts.length = 0; CAM.off = CAM.lookOff = null; CAM.h = R.h; snapKite();
+  }
   if (crewNear() > 300) toCrew(true);
   if (R.state === 'fallen') getUp();
   msg(MODES[GAME.mode].name + ' · VIENTO ' + WIND.name.toUpperCase() + ' ' + WIND.kn + ' KN', 2.2);
@@ -1120,7 +1151,7 @@ function netSend(dt) {
     n: myName(), m: GAME.mode, kb: GEAR.kb, fb: GEAR.fb, w: WING.design, p: GAME.running ? 1 : 0, sc: R.score,
     x: r2(nt.p.x), y: r2(nt.p.y), z: r2(nt.p.z), vx: r2(nt.v.x), vy: r2(nt.v.y), vz: r2(nt.v.z), q: [r3(nt.q.x), r3(nt.q.y), r3(nt.q.z), r3(nt.q.w)],
     t: Math.round(Date.now() / 500),   // cambia siempre: así los demás saben que sigues ahí aunque estés quieto
-    yw: r2(R.yaw), pw: r2(R.power), v: r2(R.v), c: r2(R.charge), s: R.state === 'air' ? 1 : R.state === 'fallen' ? 2 : 0,
+    yw: r2(R.yaw), sf: r2(R.surf || 0), pw: r2(R.power), v: r2(R.v), c: r2(R.charge), s: R.state === 'air' ? 1 : R.state === 'fallen' ? 2 : 0,
   };
   if (GAME.mode === 'kite') { const k = KITE.pos, q = KITE.g.quaternion; st.k = [r2(k.x), r2(k.y), r2(k.z)]; st.kq = [r3(q.x), r3(q.y), r3(q.z), r3(q.w)]; }
   else { const p = WING.g.position, q = WING.g.quaternion; st.wl = [r3(p.x), r3(p.y), r3(p.z)]; st.wq = [r3(q.x), r3(q.y), r3(q.z), r3(q.w)]; }
@@ -1158,9 +1189,9 @@ function buildPeer(P) {
 function dropPeerVis(P) { const V = P.vis; if (!V) return; scene.remove(V.inn, V.label); if (V.kite) scene.remove(V.kite, V.lines); P.vis = null; }
 // la postura de otro jugador: la misma que la nuestra, calculada con sus datos (y dejando la nuestra como estaba)
 function posePeer(V, st, t) {
-  const sv = { yaw: R.yaw, power: R.power, v: R.v, charge: R.charge, state: R.state, air: R.air, surge: R.surge }, sm = GAME.mode;
+  const sv = { yaw: R.yaw, power: R.power, v: R.v, charge: R.charge, state: R.state, air: R.air, surge: R.surge, surf: R.surf }, sm = GAME.mode;
   const wp = WING.g.position.clone(), wq = WING.g.quaternion.clone(), hz = WING.handles.map(o => o.position.z);
-  R.yaw = st.yw; R.power = st.pw; R.v = st.v; R.charge = st.c; R.state = ['ride', 'air', 'fallen'][st.s] || 'ride'; R.air = st.s === 1 ? { grab: 0 } : null; R.surge = 0; GAME.mode = st.m;
+  R.yaw = st.yw; R.surf = st.sf || 0; R.power = st.pw; R.v = st.v; R.charge = st.c; R.state = ['ride', 'air', 'fallen'][st.s] || 'ride'; R.air = st.s === 1 ? { grab: 0 } : null; R.surge = 0; GAME.mode = st.m;
   try { computePose(t); poseHuman(V.h, J); }
   finally { Object.assign(R, sv); GAME.mode = sm; WING.g.position.copy(wp); WING.g.quaternion.copy(wq); WING.handles.forEach((o, i) => o.position.z = hz[i]); }
 }
@@ -1327,7 +1358,7 @@ function frame() {
     const t = GAME.t;
     U.uTime.value = t; skyMat.uniforms.uTime.value = t;
     updateWind(t);
-    updateSwell(dt);
+    updateWaves();
     const S = readSticks();
     updateRider(dt, S);
     placeRider(t);
