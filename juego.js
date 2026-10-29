@@ -557,6 +557,10 @@ function updateRider(dt, S) {
       if (R.s !== R.gybe) st = Math.sign(angDiff(R.h, hd)) || 1;
       else { const e = angDiff(R.h, phi + R.s * twaT * DEG); st = clamp(e * 2, -1, 1); if (Math.abs(e) < 0.12) R.gybe = 0; }
     } else st = clamp(angDiff(R.h, phi + R.s * twaT * DEG) * 1.6, -1, 1);
+    if (!R.gybe && (R.surf || 0) > 0.5) {   // surfeando: CEÑIR − (arriba) sube por la pared hacia la cresta, CEÑIR + (abajo) baja hacia la playa
+      const sx = Math.sign(Math.cos(R.h)) || 1, C = clamp(S.C || 0, -1, 1);
+      st = clamp(angDiff(R.h, Math.atan2(-C * 0.32, sx)) * 2.2, -1, 1);
+    }
     const inp = st;
     const maxRate = kite ? 0.52 + 0.07 * Math.min(R.v, 10) : 0.6 + (R.foilOn ? 0.07 : 0.04) * Math.min(R.v, 10);
     R.turn = lerp(R.turn, inp, clamp(dt * 5, 0, 1));
@@ -584,7 +588,8 @@ function updateRider(dt, S) {
     R.surf = lerp(R.surf || 0, can ? 1 : 0, clamp(dt * (can ? 2.5 : 3), 0, 1));
     if (wu && R.surf > 0.02) {
       R.z += SPOT.c * R.surf * dt;                                                   // la ola te lleva
-      R.z += (wu.w.s + 0.7 * SPOT.w - R.z) * clamp(dt * 1.5 * R.surf, 0, 1);         // y te mantiene en su cara
+      const aT = clamp(0.7 + 1.6 * H.z, 0.15, 1.6);                                  // apuntando al mar subes hacia la cresta; a la playa, bajas
+      R.z += (wu.w.s + aT * SPOT.w - R.z) * clamp(dt * 1.1 * R.surf, 0, 1);          // y te mantiene en su cara
       R.v = lerp(R.v, Math.max(R.v, 9.5), clamp(dt * 1.2 * R.surf, 0, 1));          // la bajada te da velocidad
     }
     R.wave = R.surf;
@@ -907,11 +912,18 @@ function updateCamera(dt) {
     else { want.copy(rp).addScaledVector(Hc, 4).addScaledVector(D, 3).add(V3(0, 6, 0)); look.copy(rp).add(V3(0, 1, 0)); }
   }
   if (GAME.mode === 'kite' && m < 3) look.lerp(KITE.pos, m === 0 ? 0.12 : m === 1 ? 0.3 : 0.22);   // que se vea también la cometa
+  // surfeando la ola: la cámara se pone delante de la ola (por el lado de la playa), de lado y por encima, como en las fotos;
+  // así la cresta no tapa al rider y se ve la pared de la ola detrás
+  const sk = R.surf || 0;
+  if (sk > 0.01 && m < 3) {
+    const sx = Math.sign(Math.cos(R.h)) || 1;
+    want.lerp(V3(rp.x + sx * 8, rp.y + 3.4, rp.z + 10), sk); look.lerp(V3(rp.x - sx * 2, rp.y + 1.3, rp.z - 3), sk);
+  }
   const k = clamp(dt * (m === 2 ? 7 : 4), 0, 1);
   CAM.off = (CAM.off || want.clone().sub(rp)).lerp(want.sub(rp), k);
   CAM.lookOff = (CAM.lookOff || look.clone().sub(rp)).lerp(look.sub(rp), clamp(dt * 6, 0, 1));
   CAM.pos.copy(rp).add(CAM.off); CAM.look.copy(rp).add(CAM.lookOff);
-  CAM.pos.y = Math.max(CAM.pos.y, surfaceH(CAM.pos.x, CAM.pos.z, GAME.t) + 0.6);
+  CAM.pos.y = Math.max(CAM.pos.y, surfaceH(CAM.pos.x, CAM.pos.z, GAME.t) + 0.6, rp.y + 2.5 * sk);
   camera.position.copy(CAM.pos); camera.lookAt(CAM.look);
 }
 
