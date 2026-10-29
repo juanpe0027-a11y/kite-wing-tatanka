@@ -130,38 +130,48 @@ function makeNoiseTextures(N = 256) {
 const NOISE = makeNoiseTextures();
 
 // ---------------------------------------------------------------- agua: olas del viento (sin barca ni estela)
-const U = { uTime: { value: 0 }, uChop: { value: 1 }, uCaps: { value: 0.2 }, tNrm: { value: NOISE.normal }, tNoise: { value: NOISE.noise } };
+const U = { uTime: { value: 0 }, uChop: { value: 1 }, uCaps: { value: 0.2 }, tNrm: { value: NOISE.normal }, tNoise: { value: NOISE.noise },
+  // la ola grande (mar de fondo, sin romper): dirección (x, z), posición de la cresta y altura · centro, ancho y largo de la cresta
+  uSwA: { value: new T.Vector4(0, 1, -9999, 0) }, uSwB: { value: new T.Vector4(0, 8, 90, 0) } };
 const WATER_GLSL = /* glsl */`
-  uniform float uTime; uniform float uChop;
-  float wavesH(vec2 p){
+  uniform float uTime; uniform float uChop; uniform vec4 uSwA; uniform vec4 uSwB;
+  float swellH(vec2 p){
+    if (uSwA.w < 0.001) return 0.0;
+    float a = (dot(p, uSwA.xy) - uSwA.z) / uSwB.y, b = (dot(p, vec2(-uSwA.y, uSwA.x)) - uSwB.x) / uSwB.z;
+    return uSwA.w * exp(-a * a) * exp(-b * b * b * b);
+  }
+  float chopH(vec2 p){
     return uChop * (0.075*sin(dot(p, vec2(0.110, 0.046)) + uTime*0.95)
          + 0.050*sin(dot(p, vec2(-0.060, 0.150)) + uTime*1.15)
          + 0.028*sin(dot(p, vec2(0.290, -0.210)) + uTime*1.85)
          + 0.016*sin(dot(p, vec2(-0.420, -0.350)) + uTime*2.60)
          + 0.010*sin(dot(p, vec2(0.700, 0.520)) + uTime*3.40));
-  }`;
+  }
+  float wavesH(vec2 p){ return chopH(p) + swellH(p); }`;
 const waterMat = new T.MeshStandardMaterial({ color: 0x0c3f52, roughness: 0.06, metalness: 0.0, envMapIntensity: 1.15 });
 waterMat.onBeforeCompile = sh => {
   Object.assign(sh.uniforms, U);
   sh.vertexShader = sh.vertexShader
-    .replace('#include <common>', '#include <common>\n' + WATER_GLSL + '\nvarying vec3 vW; varying float vFoam;')
+    .replace('#include <common>', '#include <common>\n' + WATER_GLSL + '\nvarying vec3 vW; varying float vFoam; varying float vSw;')
     .replace('#include <beginnormal_vertex>', `
       vec3 w0 = (modelMatrix * vec4(position, 1.0)).xyz;
       float hC = wavesH(w0.xz);
       const float E = 0.3;
       float hX = wavesH(w0.xz + vec2(E, 0.0)), hZ = wavesH(w0.xz + vec2(0.0, E));
       vec3 objectNormal = normalize(vec3(-(hX - hC) / E, 1.0, -(hZ - hC) / E));
-      vFoam = smoothstep(0.08, 0.2, hC / max(uChop, 0.01));
+      vFoam = smoothstep(0.08, 0.2, chopH(w0.xz) / max(uChop, 0.01));   // la ola grande no rompe: sin espuma
+      vSw = swellH(w0.xz);
       vW = w0 + vec3(0.0, hC, 0.0);`)
     .replace('#include <begin_vertex>', 'vec3 transformed = position + vec3(0.0, hC, 0.0);');
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>', '#include <common>\nuniform float uTime; uniform float uCaps; uniform sampler2D tNrm; uniform sampler2D tNoise;\nvarying vec3 vW; varying float vFoam;')
+    .replace('#include <common>', '#include <common>\nuniform float uTime; uniform float uCaps; uniform sampler2D tNrm; uniform sampler2D tNoise;\nvarying vec3 vW; varying float vFoam; varying float vSw;')
     .replace('#include <color_fragment>', `#include <color_fragment>
       float n1 = texture2D(tNoise, vW.xz * 0.045 + uTime * vec2(0.008, 0.003)).r;
       float n2 = texture2D(tNoise, vW.xz * 0.23 - uTime * vec2(0.05, 0.035)).r;
       // borreguitos: más espuma en las crestas cuanto más viento
       float fo = smoothstep(0.66, 0.86, n1 * 0.55 + n2 * 0.5 + vFoam * 0.25) * uCaps;
       vec3 base = diffuseColor.rgb * (0.85 + 0.3 * n1);
+      base = mix(base, vec3(0.06, 0.34, 0.31), clamp(vSw * 0.28, 0.0, 0.55));   // la ola grande, verde y transparente en su cara
       diffuseColor.rgb = mix(base, vec3(0.93, 0.96, 0.97), fo);`)
     .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       {
@@ -192,8 +202,13 @@ const waterFar = new T.Mesh(farGeo, waterMat); waterFar.frustumCulled = false;
 scene.add(waterNear, waterFar);
 
 // --- la misma ola en JS (altura del agua bajo la tabla)
+function swellH(x, z) {
+  const A = U.uSwA.value, B = U.uSwB.value; if (A.w < 0.001) return 0;
+  const a = (x * A.x + z * A.y - A.z) / B.y, b = (-x * A.y + z * A.x - B.x) / B.z;
+  return A.w * Math.exp(-a * a) * Math.exp(-b * b * b * b);
+}
 function wavesH(x, z, t) {
-  return U.uChop.value * (0.075 * Math.sin(x * 0.110 + z * 0.046 + t * 0.95) + 0.050 * Math.sin(-x * 0.060 + z * 0.150 + t * 1.15)
+  return swellH(x, z) + U.uChop.value * (0.075 * Math.sin(x * 0.110 + z * 0.046 + t * 0.95) + 0.050 * Math.sin(-x * 0.060 + z * 0.150 + t * 1.15)
     + 0.028 * Math.sin(x * 0.290 - z * 0.210 + t * 1.85) + 0.016 * Math.sin(-x * 0.420 - z * 0.350 + t * 2.60)
     + 0.010 * Math.sin(x * 0.700 + z * 0.520 + t * 3.40));
 }

@@ -301,6 +301,29 @@ function setMode(m) {
   try { localStorage.setItem('kite-mode', m); } catch (e) {}
 }
 
+// ---- OLAS GRANDES: cada 20-35 s llega una ola de mar de fondo, larga y sin romper; pasa junto a ti y a los 11 s se va
+const SWELL = { t: 0, life: 11, next: 14, on: false, c: 6.5, amp: 0 };
+function updateSwell(dt) {
+  const A = U.uSwA.value, B = U.uSwB.value;
+  if (!SWELL.on) {
+    if (GAME.running) SWELL.next -= dt;
+    if (SWELL.next > 0 || !GAME.running || R.state === 'fallen') return;
+    // viene de mar adentro hacia la costa, algo torcida con el viento, y nace 24 m detrás de ti (llega en pocos segundos)
+    let dx = WIND.D.x * 0.5, dz = WIND.D.z * 0.5 + 1; const l = Math.hypot(dx, dz); dx /= l; dz /= l;
+    // siempre algo más rápida que tú, para que te alcance; y desplazada hacia donde vas, para que la encuentres
+    const vx = Math.cos(R.h) * R.v, vz = Math.sin(R.h) * R.v, along = vx * dx + vz * dz, side = -vx * dz + vz * dx;
+    SWELL.c = clamp(along + 4, 6, 12);
+    A.x = dx; A.y = dz; A.z = R.x * dx + R.z * dz - 24;
+    B.x = -R.x * dz + R.z * dx + side * 5; B.y = 9; B.z = 160;
+    SWELL.on = true; SWELL.t = 0; SWELL.amp = 1.8 + Math.random() * 0.8;
+    say('¡VIENE UNA OLA!<small>ponte delante y navega con ella</small>', 'info', 2);
+    return;
+  }
+  SWELL.t += dt; A.z += SWELL.c * dt;
+  A.w = SWELL.amp * smooth(0, 1.5, SWELL.t) * (1 - smooth(SWELL.life - 2, SWELL.life, SWELL.t));
+  if (SWELL.t >= SWELL.life) { SWELL.on = false; A.w = 0; SWELL.next = 18 + Math.random() * 15; }
+}
+
 // ---- costa y obstáculos (fuera de eso, todo el mar es navegable)
 const GROIN_PTS = (() => { const c = new T.QuadraticBezierCurve3(V3(GROIN_X, 0, SHORE_Z + 10), V3(GROIN_X - 10, 0, SHORE_Z - 85), V3(GROIN_X + 45, 0, SHORE_Z - 105)); return c.getPoints(40); })();
 function solidAt(x, z, mode) {
@@ -349,6 +372,11 @@ function trackCircle(s) {
 function moveStick(t, e) {
   if (t.side === 'L') {   // barra: horizontal = girar (sensible), vertical = potencia (más recorrido)
     const dz = v => Math.sign(v) * Math.max(0, Math.abs(v) - 0.1) / 0.9;
+    if (t.end) {   // cogida por un extremo (rojo o azul): tirar de él hacia abajo gira hacia ese lado, como en la barra de verdad
+      const dy = e.clientY - t.y0;
+      IN.L.x = t.end * clamp(0.35 + Math.max(0, dy) / 45, 0, 1); IN.L.y = clamp(dz(-dy / 80), -1, 1);
+      return;
+    }
     IN.L.x = clamp(dz((e.clientX - t.x0) / 60), -1, 1); IN.L.y = clamp(dz(-(e.clientY - t.y0) / 80), -1, 1);
     return;
   }
@@ -365,10 +393,12 @@ addEventListener('pointerdown', e => {
   const b = $(side === 'L' ? 'stL' : 'stR').getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2, rad = b.width * 0.47;
   const abs = side === 'R' && Math.hypot(e.clientX - cx, e.clientY - cy) < rad * 1.5;
   const t = abs ? { side, x0: cx, y0: cy, rad } : { side, x0: e.clientX, y0: e.clientY, rad: 56 };
+  // en la barra, tocar en el extremo rojo (izquierda) o azul (derecha) es coger ese lado de la barra
+  if (side === 'L' && e.clientY > b.top - 20 && e.clientY < b.bottom + 20) { const rel = (e.clientX - b.left) / b.width; if (rel < 0.33) t.end = -1; else if (rel > 0.67) t.end = 1; }
   touches.set(e.pointerId, t);
   const s = IN[side]; s.on = true; s.x = s.y = 0; s.ang = null; s.turn = 0;
   $(side === 'L' ? 'stL' : 'stR').classList.add('on');
-  if (abs) moveStick(t, e);
+  if (abs || t.end) moveStick(t, e);
 });
 addEventListener('pointermove', e => { const t = touches.get(e.pointerId); if (t) moveStick(t, e); });
 const endTouch = e => {
@@ -477,6 +507,14 @@ function updateRider(dt, S) {
   // la barra de la cometa tarda más en notarse que el ala, que va en las manos
   R.power = lerp(R.power, clamp(0.6 + 0.4 * S.L.y, 0.15, 1), clamp(dt * (GAME.mode === 'kite' ? 2.2 : 3.5), 0, 1));
   R.kiteIn = GAME.mode === 'kite' && R.state !== 'fallen' ? S.L.x : 0;
+  // tirón: tirar de la barra hacia abajo de golpe da un empujón de velocidad, como bombear la cometa o el ala de verdad
+  const py = S.L.y || 0; R.tugCd = Math.max(0, (R.tugCd || 0) - dt);
+  if (py < 0.25) R.lowT = GAME.t;
+  if (py > 0.55 && GAME.t - (R.lowT ?? -9) < 0.3 && R.tugCd === 0 && R.state === 'ride') {
+    R.tugCd = 0.45; R.lowT = -9; R.surge = 1;
+    R.v += (GAME.mode === 'kite' ? 0.9 : 0.8) * (1 - 0.5 * smooth(6, 14, R.v)); sfxThump(80, 0.2, 0.15);
+  }
+  R.surge = Math.max(0, (R.surge || 0) - dt * 2.2);
   const surf = surfaceH(R.x, R.z, GAME.t);
 
   if (R.state === 'fallen') {
@@ -522,7 +560,17 @@ function updateRider(dt, S) {
       if (!R.foilOn && R.v > M.takeoff + 0.3) { R.foilOn = true; say('¡VOLANDO!', 'clean', 1.2); }
       if (R.foilOn && R.v < M.takeoff - 0.9) { R.foilOn = false; say('AL AGUA', 'info', 1); sfxSplash(0.4); }
     }
-    R.foil = lerp(R.foil, R.foilOn ? 1 : 0, clamp(dt * 1.6, 0, 1));
+    // la ola grande: en su cara (la que baja hacia delante) te empuja como al surfear; con el foil subes por ella
+    const SA = U.uSwA.value; let push = 0;
+    if (swellH(R.x, R.z) > 0.12) {
+      const e = 0.8, sl = (swellH(R.x + SA.x * e, R.z + SA.y * e) - swellH(R.x - SA.x * e, R.z - SA.y * e)) / (2 * e);
+      push = Math.max(0, -sl) * (0.35 + 0.65 * Math.max(0, H.x * SA.x + H.z * SA.y));
+    }
+    R.v += push * 10 * dt;
+    R.wave = lerp(R.wave || 0, clamp(push * 3, 0, 1), clamp(dt * 3, 0, 1));
+    if (R.wave > 0.15) R.waveT = (R.waveT || 0) + dt;
+    else if (R.waveT) { const wt = R.waveT; R.waveT = 0; if (wt > 1 && GAME.running) { const pts = Math.round(wt * 120); R.score += pts; say('SURFEANDO LA OLA<small>' + wt.toFixed(1) + ' S · +' + pts + '</small>', 'clean', 1.6); } }
+    R.foil = lerp(R.foil, R.foilOn ? 1 + 0.45 * R.wave : 0, clamp(dt * 1.6, 0, 1));
     // cargar el salto (o el pump) con el centro del círculo derecho
     if (S.R.hold) R.charge = Math.min(1, R.charge + dt * 1.4);
     if (S.R.rel) {
@@ -648,7 +696,7 @@ function computePose(t) {
     }
   } else if (m === 'wing') {
     // el ala delante y por encima, con el borde de ataque hacia proa y la envergadura inclinada
-    WP.C.copy(J.ch).add(V3(sb * 0.05, 0.32 - 0.1 * (1 - pw), 0.62));
+    WP.C.copy(J.ch).add(V3(sb * 0.05, 0.32 - 0.1 * (1 - pw) + 0.1 * (R.surge || 0), 0.62 - 0.2 * (R.surge || 0)));   // con el tirón, el ala hacia el pecho
     WP.Y.set(sb * Math.cos(0.5), Math.sin(0.5), 0).normalize();
     WP.X.set(0, 0.75, -0.66 + 0.4 * (1 - pw)); WP.X.addScaledVector(WP.Y, -WP.X.dot(WP.Y)).normalize();
     WP.Z.crossVectors(WP.X, WP.Y);
@@ -722,7 +770,7 @@ function updateKite(dt) {
   const vmax = 1.5 * clamp(0.5 + 0.5 * WIND.knNow / 16, 0.6, 1.4);
   // en el borde no puede seguir hacia fuera, pero si la giras hacia dentro vuelve a correr
   // con inercia: la velocidad cambia de dirección poco a poco, como una cometa de verdad
-  const vT = vmax * (0.3 + 0.7 * R.power), ki = clamp(dt * 2.2, 0, 1);
+  const vT = vmax * (0.3 + 0.7 * R.power) * (1 + 0.9 * (R.surge || 0)), ki = clamp(dt * (2.2 + 4 * (R.surge || 0)), 0, 1);   // con el tirón la cometa acelera
   let vx = lerp(KITE.vx || 0, Math.sin(KITE.psi) * vT, ki), vy = lerp(KITE.vy || 0, Math.cos(KITE.psi) * vT, ki);
   const nx = KITE.kx / (e0 || 1), ny = KITE.el / HP / (e0 || 1), out = vx * nx + vy * ny;
   const outOk = Math.max(0, 0.96 - e0) * 4;   // cuanto más cerca del borde, menos puede seguir hacia fuera: frena sin golpe
@@ -1110,9 +1158,9 @@ function buildPeer(P) {
 function dropPeerVis(P) { const V = P.vis; if (!V) return; scene.remove(V.inn, V.label); if (V.kite) scene.remove(V.kite, V.lines); P.vis = null; }
 // la postura de otro jugador: la misma que la nuestra, calculada con sus datos (y dejando la nuestra como estaba)
 function posePeer(V, st, t) {
-  const sv = { yaw: R.yaw, power: R.power, v: R.v, charge: R.charge, state: R.state, air: R.air }, sm = GAME.mode;
+  const sv = { yaw: R.yaw, power: R.power, v: R.v, charge: R.charge, state: R.state, air: R.air, surge: R.surge }, sm = GAME.mode;
   const wp = WING.g.position.clone(), wq = WING.g.quaternion.clone(), hz = WING.handles.map(o => o.position.z);
-  R.yaw = st.yw; R.power = st.pw; R.v = st.v; R.charge = st.c; R.state = ['ride', 'air', 'fallen'][st.s] || 'ride'; R.air = st.s === 1 ? { grab: 0 } : null; GAME.mode = st.m;
+  R.yaw = st.yw; R.power = st.pw; R.v = st.v; R.charge = st.c; R.state = ['ride', 'air', 'fallen'][st.s] || 'ride'; R.air = st.s === 1 ? { grab: 0 } : null; R.surge = 0; GAME.mode = st.m;
   try { computePose(t); poseHuman(V.h, J); }
   finally { Object.assign(R, sv); GAME.mode = sm; WING.g.position.copy(wp); WING.g.quaternion.copy(wq); WING.handles.forEach((o, i) => o.position.z = hz[i]); }
 }
@@ -1279,6 +1327,7 @@ function frame() {
     const t = GAME.t;
     U.uTime.value = t; skyMat.uniforms.uTime.value = t;
     updateWind(t);
+    updateSwell(dt);
     const S = readSticks();
     updateRider(dt, S);
     placeRider(t);
