@@ -8,6 +8,17 @@ const T = THREE;
 T.ColorManagement.enabled = true;   // vendor.js lo apaga para el juego de surf; aquí trabajamos en lineal
 
 const $ = id => document.getElementById(id);
+// versión: si el móvil tiene guardado un index.html viejo (de otra versión que juego.js), se recarga sin caché
+// (como mucho dos veces seguidas, para no entrar en bucle si la web aún no se ha actualizado)
+const KITE_VER = '19';
+(() => {
+  const m = document.querySelector('meta[name="kite-ver"]');
+  try {
+    if (m && m.content === KITE_VER) { sessionStorage.removeItem('kite-reload'); return; }
+    const n = +(sessionStorage.getItem('kite-reload') || 0);
+    if (n < 2) { sessionStorage.setItem('kite-reload', n + 1); location.replace(location.pathname + '?v=' + Date.now()); }
+  } catch (e) {}
+})();
 const V3 = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;

@@ -273,6 +273,12 @@ const KITE = (() => {
   return { g, at, lines, lineGeo, bar, line, ln: 0, cgeo: geo, base: Float32Array.from(pos), NS, NC, az: 0.8, el: 0.6, side: 1, loop: 0, pos: V3(), barC: V3() };
 })();
 
+// por si el móvil trae un index.html viejo: los botones nuevos se crean aquí y lo que falte no para el juego
+const DUMMY = {};
+const $el = id => $(id) || DUMMY[id] || (DUMMY[id] = document.createElement('div'));
+for (const [id, txt, lbl] of [['bCrew', '👥', 'Ir con los demás'], ['bWaves', '🏄', 'A las olas']]) {
+  if (!$(id) && $('bSea')) { const b = document.createElement('button'); b.id = id; b.textContent = txt; b.setAttribute('aria-label', lbl); $('bSea').after(b); }
+}
 let HUMAN = null;   // el rider elegido (JuanP o David) cuando ha cargado
 const RIDERS = {}; let RIDER_NAME = 'juanp';
 try { const r = localStorage.getItem('kite-rider'); if (r === 'juanp' || r === 'david') RIDER_NAME = r; } catch (e) {}
@@ -984,7 +990,7 @@ function sfxThump(f, gain, dur) {
   o.connect(g).connect(SFX.master); o.start(t); o.stop(t + dur);
 }
 function sfxSplash(k) { sfxBurst(0.5 + 0.4 * k, 2600, 300, 0.2 + 0.25 * Math.min(k, 1.5)); sfxThump(70, 0.2 * k, 0.25); }
-$('bSnd').onclick = () => { SFX.on = !SFX.on; $('bSnd').textContent = SFX.on ? '🔊' : '🔇'; try { localStorage.setItem('kite-sound', SFX.on ? 'on' : 'off'); } catch (e) {} sfxInit(); };
+$el('bSnd').onclick = () => { SFX.on = !SFX.on; $('bSnd').textContent = SFX.on ? '🔊' : '🔇'; try { localStorage.setItem('kite-sound', SFX.on ? 'on' : 'off'); } catch (e) {} sfxInit(); };
 $('bSnd').textContent = SFX.on ? '🔊' : '🔇';
 
 // =====================================================================================
@@ -997,7 +1003,7 @@ for (const [id, nm, , sub] of WINDS) {
 }
 function saveWind() { $('knLbl').textContent = `Fuerza ${WIND.kn} nudos`; try { localStorage.setItem('kite-wind', JSON.stringify({ id: WIND.id, kn: WIND.kn })); } catch (e) {} }
 $('kn').value = WIND.kn; saveWind();
-$('kn').oninput = e => { WIND.kn = +e.target.value; saveWind(); };
+$el('kn').oninput = e => { WIND.kn = +e.target.value; saveWind(); };
 document.querySelectorAll('#modes .opt').forEach(b => b.onclick = () => setMode(b.dataset.m));
 function showPanel(id) { for (const p of ['pMain', 'pControls', 'pGear']) $(p).hidden = p !== id; }
 // material: diseñador del ala (como el de las caras del wake), con una vista de cada diseño
@@ -1038,11 +1044,11 @@ function gearSum() {
   $('riderSub').textContent = GAME.mode === 'kite' ? 'Tabla ' + KITE_BOARDS[GEAR.kb].name.toLowerCase() + ' · cometa Tatanka'
     : 'Foil ' + FOIL_BOARDS[GEAR.fb].name.toLowerCase() + ' · ala ' + WING_DESIGNS[WING.design].name.toLowerCase();
 }
-$('toGear').onclick = () => showPanel('pGear'); $('gearOk').onclick = () => showPanel('pMain');
-$('toControls').onclick = () => showPanel('pControls'); $('controlsOk').onclick = () => showPanel('pMain');
-$('camBtn').onclick = () => setCam((CAM.mode + 1) % CAM.names.length);
+$el('toGear').onclick = () => showPanel('pGear'); $el('gearOk').onclick = () => showPanel('pMain');
+$el('toControls').onclick = () => showPanel('pControls'); $el('controlsOk').onclick = () => showPanel('pMain');
+$el('camBtn').onclick = () => setCam((CAM.mode + 1) % CAM.names.length);
 function togglePause() { if (!GAME.running) return; GAME.paused = !GAME.paused; msg(GAME.paused ? 'PAUSA' : ''); sfxUpdate(); }
-$('bPause').onclick = togglePause; $('bCam').onclick = nextCam;
+$el('bPause').onclick = togglePause; $el('bCam').onclick = nextCam;
 // mar adentro: te lleva al punto del mapa más lejos de la costa, navegando al través
 function toOpenSea() {
   if (!GAME.running) return;
@@ -1052,7 +1058,7 @@ function toOpenSea() {
   trail.pts.length = 0; CAM.off = CAM.lookOff = null; CAM.h = R.h; snapKite(); KITE.prev = null;
   say('MAR ADENTRO<small>a 2,4 km de la playa</small>', 'info', 1.8);
 }
-$('bSea').onclick = toOpenSea;
+$el('bSea').onclick = toOpenSea;
 // ---- A LAS OLAS: te pone en el pico de Puerto Siles, justo delante de la ola que viene (o donde nacen, si hay calma)
 function toWaves(quiet) {
   if (!WAVES.on) wavesBtn('on');
@@ -1067,10 +1073,10 @@ function toWaves(quiet) {
   if (w) say('¡A LAS OLAS!<small>viene una por detrás: navega y te coge</small>', 'info', 2);
   else { const tc = Date.now() / 1000 % WAVES.cyc; say('PICO DE PUERTO SILES<small>la próxima serie llega en ' + Math.ceil(WAVES.cyc - tc) + ' s</small>', 'info', 2.2); }
 }
-$('bWaves').onclick = () => { if (GAME.running) toWaves(false); };
+$el('bWaves').onclick = () => { if (GAME.running) toWaves(false); };
 addEventListener('keydown', e => { if (e.code === 'KeyO' && GAME.running) toWaves(false); });
-$('bMenu').onclick = () => { try { recSave(); } catch (e) {} GAME.running = false; GAME.paused = false; $('hud').hidden = true; $('menu').hidden = false; showPanel('pMain'); msg(''); };
-$('go').onclick = () => {
+$el('bMenu').onclick = () => { try { recSave(); } catch (e) {} GAME.running = false; GAME.paused = false; $('hud').hidden = true; $('menu').hidden = false; showPanel('pMain'); msg(''); };
+$el('go').onclick = () => {
   sfxInit(); if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume();
   $('menu').hidden = true; $('hud').hidden = false; GAME.running = true; GAME.paused = false;
   R.score = 0; CAM.off = null; CAM.h = R.h; setCam(CAM.mode); stickWords(); snapKite();
@@ -1114,7 +1120,7 @@ async function loadModels() {
 const FIREBASE_CONFIG = { apiKey: 'AIzaSyBYEgJnEQxYbgT97giPRuTaRNd5d9vF8tg', authDomain: 'surf-sagunto.firebaseapp.com', databaseURL: 'https://surf-sagunto-default-rtdb.europe-west1.firebasedatabase.app', projectId: 'surf-sagunto', storageBucket: 'surf-sagunto.firebasestorage.app', messagingSenderId: '669179228796', appId: '1:669179228796:web:1e39377632d94fa1c50ff9' };
 const NET = { db: null, me: null, id: 'k' + Math.random().toString(36).slice(2, 10), peers: {}, connected: false, sendT: 0 };
 try { $('nick').value = localStorage.getItem('kite-nick') || ''; } catch (e) {}
-$('nick').addEventListener('input', () => { try { localStorage.setItem('kite-nick', $('nick').value.trim()); } catch (e) {} });
+$el('nick').addEventListener('input', () => { try { localStorage.setItem('kite-nick', $('nick').value.trim()); } catch (e) {} });
 const myName = () => ($('nick').value.trim() || (RIDER_NAME === 'david' ? 'David' : 'JuanP')).slice(0, 16);
 function loadScript(src) { return new Promise((res, rej) => { const e = document.createElement('script'); e.src = src; e.onload = res; e.onerror = rej; document.head.appendChild(e); }); }
 (async function netStart() {
@@ -1257,7 +1263,7 @@ function toCrew(quiet) {
   trail.pts.length = 0; CAM.off = CAM.lookOff = null; CAM.h = R.h; snapKite(); KITE.prev = null;
   say('CON ' + esc(P.st.n || 'RIDER').toUpperCase() + '<small>navegáis juntos</small>', 'info', 1.8);
 }
-$('bCrew').onclick = () => toCrew(false);
+$el('bCrew').onclick = () => toCrew(false);
 addEventListener('keydown', e => { if (e.code === 'KeyJ' && GAME.running) toCrew(false); });
 
 // ---- RÉCORDS: se guardan en la sala «kite-wing-records» (uno por móvil, sin cuenta) y salen en el menú
@@ -1281,8 +1287,8 @@ function recSave() {
 function recTick(dt) { REC.saveT -= dt; if (REC.saveT <= 0) { REC.saveT = 10; recSave(); } }
 addEventListener('pagehide', () => { try { recSave(); } catch (e) {} });
 document.addEventListener('visibilitychange', () => { if (document.hidden) try { recSave(); } catch (e) {} });
-$('toStats').onclick = () => { showPanel('pStats'); recShow(); };
-$('statsOk').onclick = () => showPanel('pMain');
+$el('toStats').onclick = () => { showPanel('pStats'); recShow(); };
+$el('statsOk').onclick = () => showPanel('pMain');
 function recShow() {
   const d = REC.data, fmt = v => (v || 0).toLocaleString('es-ES');
   $('recMine').innerHTML = d ? `<b>Mejor sesión</b><span>${fmt(d.best)} puntos</span><b>Puntos en total</b><span>${fmt(d.total)}</span>
@@ -1345,7 +1351,7 @@ function onVoice(m) {
 }
 
 // ---- pantalla completa (en iPhone: añadir a la pantalla de inicio)
-$('fsBtn').onclick = () => {
+$el('fsBtn').onclick = () => {
   const d = document.documentElement;
   if (!d.requestFullscreen && !document.fullscreenElement) { $('fsBtn').textContent = 'Compartir → «Añadir a inicio»'; return; }
   if (document.fullscreenElement) document.exitFullscreen(); else d.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
