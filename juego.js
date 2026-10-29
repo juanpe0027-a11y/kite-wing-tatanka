@@ -734,15 +734,19 @@ function computePose(t) {
     // surfeando la ola: el ala plana por encima, cogida solo con la mano de atrás, con el borde de ataque hacia delante
     const fk = R.surf || 0;
     if (fk > 0.01) {
-      WP.m.makeBasis(V3(0, 0, sb), V3(sb, 0, 0), V3(0, 1, 0));
+      WP.m.makeBasis(V3(-1, 0, 0), V3(0, 0, 1), V3(0, 1, 0));   // plana, con la envergadura a lo largo de los hombros y el borde de ataque pegado a la espalda
       WING.g.quaternion.slerp(new T.Quaternion().setFromRotationMatrix(WP.m), fk);
-      WING.g.position.lerp(V3().copy(J.ch).add(V3(-sb * 0.62, 0.24, -0.38)), fk);   // detrás del rider: hacia la cola y por su espalda, a la altura del hombro
+      WING.g.position.lerp(V3().copy(J.ch).add(V3(-sb * 0.25, -0.2, -1.03)), fk);   // detrás de la espalda, a la altura de la cintura y el pecho (como en la foto)
     }
     const hz2 = -WING.hz;   // las asas por el lado del rider
     for (const hm of WING.handles) hm.position.z = hz2;
     const WC = WING.g.position, hF = V3(0, 0.3, hz2).applyQuaternion(WING.g.quaternion).add(WC), hB = V3(0, -0.35, hz2).applyQuaternion(WING.g.quaternion).add(WC);
     if (sb > 0) { J.aF.copy(hF); J.aB.copy(hB); } else { J.aB.copy(hF); J.aF.copy(hB); }
-    if (fk > 0.01) J[sb > 0 ? 'aF' : 'aB'].lerp(V3().copy(J.ch).add(V3(sb * 0.62, -0.06, 0.24)), fk);   // la mano de delante, estirada hacia delante
+    if (fk > 0.01) {
+      J[sb > 0 ? 'aF' : 'aB'].lerp(V3().copy(J.ch).add(V3(sb * 0.62, -0.06, 0.24)), fk);   // la mano de delante, estirada hacia delante
+      const leP = V3(sb * 0.45, 0.7, -0.03).applyQuaternion(WING.g.quaternion).add(WING.g.position);   // el tubo del borde de ataque, junto a la cadera
+      J[sb > 0 ? 'aB' : 'aF'].lerp(leP, fk);                                                  // la de atrás lo coge por ahí, como en la foto
+    }
   }
   if (fallen) { J.aF.copy(J.sF).add(V3(0.3, 0.1, 0.3)); J.aB.copy(J.sB).add(V3(-0.3, 0.1, 0.3)); }
   J.eF.lerpVectors(J.sF, J.aF, 0.5).add(V3(0.04, -0.07, 0.03)); J.eB.lerpVectors(J.sB, J.aB, 0.5).add(V3(-0.04, -0.07, 0.03));
