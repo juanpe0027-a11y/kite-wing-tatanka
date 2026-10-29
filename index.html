@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Cache-Control" content="no-cache">
-<meta name="kite-ver" content="23">   <!-- súbelo a la vez que KITE_VER de escenario.js -->
+<meta name="kite-ver" content="25">   <!-- súbelo a la vez que KITE_VER de escenario.js -->
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0b2a3a">
 <meta name="mobile-web-app-capable" content="yes">
@@ -69,6 +69,8 @@
   #bJump.on { transform: scale(.94); }
   #tricks { position: absolute; right: max(14px, env(safe-area-inset-right)); bottom: calc(170px + env(safe-area-inset-bottom)); display: none; grid-template-columns: repeat(2, 92px); gap: 8px; pointer-events: auto; }
   #tricks button { height: 40px; border-radius: 20px; border: 1.5px solid #58dfff; background: rgba(23,106,186,.35); color: #fff; font: 800 11px Arial, sans-serif; touch-action: none; }
+  .cards.locked { opacity: .45; pointer-events: none; filter: grayscale(.5); }
+  #stR.surf text { fill: #ffe26b; font-weight: 900; }
   #tricks button.on { background: rgba(88,223,255,.6); }
   #hud.inAir #tricks { display: grid; } #hud.inAir #bJump { display: none; }
   @media (orientation: landscape) and (max-height: 520px) { #bJump { right: calc(max(18px, env(safe-area-inset-right)) + 150px); bottom: calc(30px + env(safe-area-inset-bottom)); } #tricks { right: calc(max(18px, env(safe-area-inset-right)) + 150px); bottom: calc(62px + env(safe-area-inset-bottom)); } }
@@ -176,6 +178,7 @@
     <div class="logo"><div class="a">KITE &amp; WING</div><div class="b">Mundo libre · Puerto de Sagunto</div></div>
     <div class="who"><span class="av" id="avatar" style="background-image:url(avatar-juanp.jpg)"></span><span>Navegas con <b id="riderName">JuanP</b><br><small id="riderSub">Tabla negra · cometa Tatanka</small></span></div>
     <label class="nickrow" for="nick"><span>Tu nombre</span><input id="nick" maxlength="16" placeholder="Escribe tu nombre" autocomplete="off" enterkeyhint="done"></label>
+    <div class="mpmenu" id="roomLine"></div>
     <div class="mpmenu" id="mpMenu">🌊 Sala online: conectando…</div>
     <div class="h2">Deporte</div>
     <div class="cards" id="modes">
@@ -231,10 +234,10 @@
       <b>Trucos</b><span>En el aire salen los botones: backroll, frontroll, spin, grab y kiteloop. Mantén pulsado para girar; suelta y acaba la vuelta</span><span><kbd>W</kbd> <kbd>S</kbd> <kbd>Q</kbd> <kbd>E</kbd> <kbd>G</kbd> <kbd>L</kbd></span>
       <b>Virar y trasluchar</b><span>Gira cruzando el viento de cara (virada, necesitas velocidad) o de popa (trasluchada): el rider cambia de lado</span><span></span>
       <b>Aterrizar</b><span>Suelta los giros a tiempo: si caes torcido, al agua</span><span></span>
-      <b>Sala online</b><span>Escribe tu nombre en el menú y sal a navegar: todos los que juegan a la vez están en la misma sala y os veis con vuestro personaje, tabla y cometa o ala. El botón 👥 te lleva junto a los demás; en el mapa salen como puntos naranjas</span><span><kbd>J</kbd></span>
+      <b>Sala online</b><span>El primero que sale a navegar crea la sala con su viento y sus olas; los que entran después navegan con ese mismo viento y esas olas (en el menú lo pone y no se puede cambiar). Escribe tu nombre en el menú y sal a navegar: todos los que juegan a la vez están en la misma sala y os veis con vuestro personaje, tabla y cometa o ala. El botón 👥 te lleva junto a los demás; en el mapa salen como puntos naranjas</span><span><kbd>J</kbd></span>
       <b>Notas de voz</b><span>Mantén pulsado 🎤, habla y suelta (8 s como mucho): las oyen todos los de la sala</span><span></span>
       <b>Récords</b><span>Tus puntos se guardan solos en este móvil; en Récords ves tu mejor sesión y el ranking de todos</span><span></span>
-      <b>Olas en Puerto Siles</b><span>Botón 🏄 (o la O): te lleva al pico, justo delante de la ola que viene. En el menú, «Series en Puerto Siles» las activa y sales ahí. Llegan series de 4 olas que no rompen. Ponte delante y navega hacia la playa: la ola te coge y te lleva. Ve de lado a lado; con CEÑIR (círculo derecho) subes por la pared hacia la cresta (arriba) o bajas hacia la playa (abajo); en wing el ala va plana en la mano de atrás. Gira hacia mar adentro para salirte por detrás. Cuanto más rato, más puntos</span><span></span>
+      <b>Olas en Puerto Siles</b><span>Botón 🏄 (o la O): te lleva al pico, justo delante de la ola que viene. En el menú, «Series en Puerto Siles» las activa y sales ahí. Llegan series de 4 olas que no rompen. Ponte delante y navega hacia la playa: la ola te coge y te lleva. En el círculo derecho salen ◀ SURF y SURF ▶: tócalos para surfear hacia ese lado de la pantalla (en el teclado, ← →); con CEÑIR (arriba y abajo) subes por la pared hacia la cresta (arriba) o bajas hacia la playa (abajo); en wing el ala va plana en la mano de atrás. Gira hacia mar adentro para salirte por detrás. Cuanto más rato, más puntos</span><span></span>
       <b>Mar adentro</b><span>Botón de la ola: te lleva en medio del mar, lo más lejos de la costa</span><span><kbd>M</kbd></span>
       <b>Cámara, pausa</b><span>Botones de abajo. La cámara VIENTO (la primera) va con el viento a la espalda: cometa a la izquierda = navegas hacia la izquierda</span><span><kbd>C</kbd> <kbd>P</kbd></span>
     </div>

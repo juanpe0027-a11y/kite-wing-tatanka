@@ -446,6 +446,7 @@ function readSticks() {
   };
   if (k.KeyA || k.ArrowLeft) S.L.x = -1; if (k.KeyD || k.ArrowRight) S.L.x = 1; if (k.KeyR) S.L.y = 1; if (k.KeyF) S.L.y = -1;
   if (k.ArrowUp) S.C = 1; if (k.ArrowDown) S.C = -1;
+  S.SX = IN.R.x; if (k.ArrowLeft) S.SX = -1; if (k.ArrowRight) S.SX = 1;   // surfeando la ola: izquierda o derecha de la pantalla
   if (b.back || k.KeyW) S.R.y = 1; if (b.front || k.KeyS) S.R.y = -1; if (b.spinL || k.KeyQ) S.R.x = -1; if (b.spinR || k.KeyE) S.R.x = 1;
   S.R.rel = (b.jumpRel || IN.kbRel) && R.charge > 0.06;
   b.jumpRel = b.loopEv = false; IN.R.relEv = IN.L.relEv = false; IN.kbRel = false; IN.R.circleEv = 0; IN.kbLoop = false;
@@ -488,6 +489,12 @@ function drawSticks() {
   const bx = IN.L.on ? IN.L.x : IN.kb.KeyA ? -1 : IN.kb.KeyD ? 1 : 0, by = IN.L.on ? IN.L.y : 0;
   $('barG').setAttribute('transform', `translate(0 ${(-by * 22).toFixed(1)}) rotate(${(bx * 26).toFixed(1)})`);
   $('hud').classList.toggle('inAir', R.state === 'air');
+  const surfing = (R.surf || 0) > 0.5;
+  if (surfing !== drawSticks.surf) {
+    drawSticks.surf = surfing; const tx = $('stR').querySelectorAll('text');
+    if (tx.length > 3) { tx[1].textContent = surfing ? 'SURF ▶' : ''; tx[3].textContent = surfing ? '◀ SURF' : ''; }
+    $('stR').classList.toggle('surf', surfing);
+  }
   $('bJump').style.setProperty('--c', R.charge.toFixed(2));
   // en wing el botón es PUMP despacio y SALTO cuando vas volando o planeando rápido
   const kn = GAME.mode === 'wing' && !(R.foilOn || R.v > 5) ? 'PUMP' : 'SALTO';
@@ -545,9 +552,9 @@ function updateRider(dt, S) {
     const kite = GAME.mode === 'kite';
     const phi = Math.atan2(F.z, F.x);
     // con la cometa manda ella: si pasa al otro lado de la ventana, trasluchada y sales hacia ese lado
-    if (kite && !R.gybe && Math.abs(KITE.kx) > 0.15 && Math.sign(KITE.kx) !== sideOfS(R.s)) R.gybe = -R.s;
+    if (kite && !R.gybe && !((R.surf || 0) > 0.5) && Math.abs(KITE.kx) > 0.15 && Math.sign(KITE.kx) !== sideOfS(R.s)) R.gybe = -R.s;
     // con el wing, la barra mantenida hacia el otro lado de la pantalla hace la trasluchada
-    if (!kite) { const rdir = H.dot(WIND.E0) >= 0 ? 1 : -1; R.gyT = Math.abs(S.L.x) > 0.5 && Math.sign(S.L.x) !== rdir ? (R.gyT || 0) + dt : 0; if (R.gyT > 0.35 && !R.gybe) R.gybe = -R.s; }
+    if (!kite && !((R.surf || 0) > 0.5)) { const rdir = H.dot(WIND.E0) >= 0 ? 1 : -1; R.gyT = Math.abs(S.L.x) > 0.5 && Math.sign(S.L.x) !== rdir ? (R.gyT || 0) + dt : 0; if (R.gyT > 0.35 && !R.gybe) R.gybe = -R.s; }
     if (S.want && S.want !== R.s && !R.gybe) R.gybe = S.want;   // el piloto del menú
     // ceñir: el mando derecho fija el rumbo respecto al viento (abajo ceñir más, arriba ceñir menos; suelto, al través)
     const twaT = 100 + 45 * clamp(S.C || 0, -1, 1);
@@ -558,13 +565,20 @@ function updateRider(dt, S) {
       else { const e = angDiff(R.h, phi + R.s * twaT * DEG); st = clamp(e * 2, -1, 1); if (Math.abs(e) < 0.12) R.gybe = 0; }
     } else st = clamp(angDiff(R.h, phi + R.s * twaT * DEG) * 1.6, -1, 1);
     if (!R.gybe && (R.surf || 0) > 0.5) {   // surfeando: CEÑIR − (arriba) sube por la pared hacia la cresta, CEÑIR + (abajo) baja hacia la playa
-      const sx = Math.sign(Math.cos(R.h)) || 1, C = clamp(S.C || 0, -1, 1);
-      st = clamp(angDiff(R.h, Math.atan2(-C * 0.32, sx)) * 2.2, -1, 1);
+      if (!R.surfDir) R.surfDir = Math.sign(Math.cos(R.h)) || 1;
+      if (Math.abs(S.SX || 0) > 0.3) {   // SURF ◀ / SURF ▶: hacia ese lado de la pantalla
+        const cr = tmp.d.setFromMatrixColumn(camera.matrixWorld, 0);
+        R.surfDir = Math.sign(cr.x * S.SX) || R.surfDir;
+      }
+      const sx = R.surfDir, C = clamp(S.C || 0, -1, 1);
+      // al cambiar de lado, el giro baja por la cara de la ola (como un bottom turn), nunca por encima de la cresta
+      const goal = Math.cos(R.h) * sx < 0.3 ? Math.atan2(0.9, sx * 0.45) : Math.atan2(-C * 0.32, sx);
+      st = clamp(angDiff(R.h, goal) * 2.6, -1, 1);
     }
     const inp = st;
     const maxRate = kite ? 0.52 + 0.07 * Math.min(R.v, 10) : 0.6 + (R.foilOn ? 0.07 : 0.04) * Math.min(R.v, 10);
     R.turn = lerp(R.turn, inp, clamp(dt * 5, 0, 1));
-    R.yr += (R.turn * maxRate * (R.gybe ? 1.6 : 1) - R.yr) * clamp(dt * (kite ? 3.4 : 2.8), 0, 1);
+    R.yr += (R.turn * maxRate * (R.gybe ? 1.6 : 1) * ((R.surf || 0) > 0.5 ? 1.7 : 1) - R.yr) * clamp(dt * (kite ? 3.4 : 2.8), 0, 1);
     R.h += R.yr * dt;
     R.v -= Math.abs(R.yr) * R.v * (kite ? 0.1 : 0.06) * dt;     // trazar curvas cuesta velocidad
     // velocidad objetivo: viento × polar × potencia (con poco viento la cometa o el ala no tira)
@@ -577,14 +591,14 @@ function updateRider(dt, S) {
     // inercia: acelera más despacio que frena; volando en el foil se planea y frena poco
     const acc = 0.6, dec = kite ? 0.9 : R.foilOn ? 0.45 : 1.1;
     R.v += (vt - R.v) * (vt > R.v ? acc : dec) * dt;
-    if (R.twa < 38) { R.v = Math.max(0, R.v - 1.4 * dt); if (R.v < 1.5) R.h += R.s * 0.7 * dt; }   // proa al viento: te para y te hace caer
+    if (R.twa < 38 && !((R.surf || 0) > 0.5)) { R.v = Math.max(0, R.v - 1.4 * dt); if (R.v < 1.5) R.h += R.s * 0.7 * dt; }   // proa al viento: te para y te hace caer
     if (M.foil) {
       if (!R.foilOn && R.v > M.takeoff + 0.3) { R.foilOn = true; say('¡VOLANDO!', 'clean', 1.2); }
       if (R.foilOn && R.v < M.takeoff - 0.9) { R.foilOn = false; say('AL AGUA', 'info', 1); sfxSplash(0.4); }
     }
     // surfear las olas de Puerto Siles: en su cara la ola te lleva hacia la playa (y te sujeta ahí, para que sea fácil);
     // tú vas de lado a lado con la dirección. Si giras hacia mar adentro, te sales por detrás de la ola
-    const wu = waveUnder(R.x, R.z), can = !!wu && H.z > -0.35 && (GAME.mode === 'kite' || R.foilOn || R.v > 4);
+    const wu = waveUnder(R.x, R.z), can = !!wu && H.z > ((R.surf || 0) > 0.5 ? -0.5 : -0.97) && (GAME.mode === 'kite' || R.foilOn || R.v > 4);   // te coge salvo que vayas directo mar adentro
     R.surf = lerp(R.surf || 0, can ? 1 : 0, clamp(dt * (can ? 2.5 : 3), 0, 1));
     if (wu && R.surf > 0.02) {
       R.z += SPOT.c * R.surf * dt;                                                   // la ola te lleva
@@ -593,10 +607,10 @@ function updateRider(dt, S) {
       R.v = lerp(R.v, Math.max(R.v, 9.5), clamp(dt * 1.2 * R.surf, 0, 1));          // la bajada te da velocidad
     }
     R.wave = R.surf;
-    if (R.surf > 0.5 && !R.surfOn) { R.surfOn = true; say('¡OLA COGIDA!<small>ve de lado a lado</small>', 'clean', 1.2); }
+    if (R.surf > 0.5 && !R.surfOn) { R.surfOn = true; R.surfDir = Math.sign(Math.cos(R.h)) || 1; say('¡OLA COGIDA!<small>círculo derecho: ◀ SURF ▶ de lado a lado</small>', 'clean', 1.6); }
     if (R.surf > 0.4) R.waveT = (R.waveT || 0) + dt;
     else if (R.surf < 0.2 && R.surfOn) {
-      R.surfOn = false; const wt = R.waveT || 0; R.waveT = 0;
+      R.surfOn = false; R.surfDir = 0; const wt = R.waveT || 0; R.waveT = 0;
       if (wt > 1 && GAME.running) { const pts = Math.round(wt * 120); R.score += pts; if (pts > (REC.bestTrickPts || 0)) { REC.bestTrickPts = pts; REC.bestTrick = 'Ola ' + wt.toFixed(0) + ' s'; } say('SURFEANDO LA OLA<small>' + wt.toFixed(1) + ' S · +' + pts + '</small>', 'clean', 1.6); }
     }
     R.foil = lerp(R.foil, R.foilOn ? 1 + 0.45 * R.wave : 0, clamp(dt * 1.6, 0, 1));
@@ -921,7 +935,7 @@ function updateCamera(dt) {
   const sk = R.surf || 0;
   if (sk > 0.01 && m < 3) {
     const sx = Math.sign(Math.cos(R.h)) || 1;
-    want.lerp(V3(rp.x + sx * 8, rp.y + 3.4, rp.z + 10), sk); look.lerp(V3(rp.x - sx * 2, rp.y + 1.3, rp.z - 3), sk);
+    want.lerp(V3(rp.x, rp.y + 3.6, rp.z + 11), sk); look.lerp(V3(rp.x, rp.y + 1.3, rp.z - 3), sk);   // siempre desde la playa: izquierda y derecha no cambian
   }
   const k = clamp(dt * (m === 2 ? 7 : 4), 0, 1);
   CAM.off = (CAM.off || want.clone().sub(rp)).lerp(want.sub(rp), k);
@@ -1017,11 +1031,16 @@ for (const [id, nm, , sub] of WINDS) {
   b.innerHTML = `<b>${nm}</b><em>${sub}</em>`; $('winds').appendChild(b);
   b.onclick = () => { const p = WINDS.find(x => x[0] === id); [WIND.id, WIND.name, WIND.dir] = p; document.querySelectorAll('#winds .opt').forEach(x => x.classList.toggle('sel', x === b)); saveWind(); };
 }
+function applyWind(id, kn) {
+  const p = WINDS.find(x => x[0] === id); if (p) [WIND.id, WIND.name, WIND.dir] = p;
+  if (kn) { WIND.kn = kn; $('kn').value = kn; }
+  document.querySelectorAll('#winds .opt').forEach(x => x.classList.toggle('sel', x.dataset.w === WIND.id)); saveWind();
+}
 function saveWind() { $('knLbl').textContent = `Fuerza ${WIND.kn} nudos`; try { localStorage.setItem('kite-wind', JSON.stringify({ id: WIND.id, kn: WIND.kn })); } catch (e) {} }
 $('kn').value = WIND.kn; saveWind();
 $el('kn').oninput = e => { WIND.kn = +e.target.value; saveWind(); };
 document.querySelectorAll('#modes .opt').forEach(b => b.onclick = () => setMode(b.dataset.m));
-function showPanel(id) { for (const p of ['pMain', 'pControls', 'pGear']) $(p).hidden = p !== id; }
+function showPanel(id) { for (const p of ['pMain', 'pControls', 'pGear', 'pStats']) if ($(p)) $(p).hidden = p !== id; }
 // material: diseñador del ala (como el de las caras del wake), con una vista de cada diseño
 for (const [id, d] of Object.entries(WING_DESIGNS)) {
   const b = document.createElement('button'); b.className = 'opt card' + (id === WING.design ? ' sel' : ''); b.dataset.w = id;
@@ -1079,14 +1098,14 @@ $el('bSea').onclick = toOpenSea;
 function toWaves(quiet) {
   if (!WAVES.on) wavesBtn('on');
   updateWaves();
-  const w = WAVES.list.filter(v => v.t < 9).sort((a, b) => a.t - b.t)[0];
+  const w = WAVES.list.filter(v => v.t > 1.2 && v.t < 11).sort((a, b) => a.t - b.t)[0];   // una ola ya formada
   const phi = Math.atan2(WIND.F.z, WIND.F.x);
-  R.x = SPOT.x + 40; R.z = w ? w.s + 20 : SPOT.z0 + 6; R.y = 0; R.vy = 0; R.air = null; R.state = 'ride'; R.v = 8; R.charge = 0; R.gybe = 0;
+  R.x = SPOT.x + 40; R.z = w ? w.s + 0.6 * SPOT.w : SPOT.z0 + 6;   // ya en su cara: la coges al momento R.y = 0; R.vy = 0; R.air = null; R.state = 'ride'; R.v = 8; R.charge = 0; R.gybe = 0;
   if (GAME.mode === 'wing') { R.foilOn = true; R.foil = 1; }   // ya volando: así la coges a la primera
   R.h = phi + R.s * 100 * DEG; R.yr = 0; R.turn = 0; trick.rotation.set(0, 0, 0);
   trail.pts.length = 0; CAM.off = CAM.lookOff = null; CAM.h = R.h; snapKite(); KITE.prev = null;
   if (quiet) return;
-  if (w) say('¡A LAS OLAS!<small>viene una por detrás: navega y te coge</small>', 'info', 2);
+  if (w) say('¡A LAS OLAS!<small>círculo derecho: ◀ SURF ▶</small>', 'info', 2);
   else { const tc = Date.now() / 1000 % WAVES.cyc; say('PICO DE PUERTO SILES<small>la próxima serie llega en ' + Math.ceil(WAVES.cyc - tc) + ' s</small>', 'info', 2.2); }
 }
 $el('bWaves').onclick = () => { if (GAME.running) toWaves(false); };
@@ -1095,6 +1114,7 @@ $el('bMenu').onclick = () => { try { recSave(); } catch (e) {} GAME.running = fa
 $el('go').onclick = () => {
   sfxInit(); if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume();
   $('menu').hidden = true; $('hud').hidden = false; GAME.running = true; GAME.paused = false;
+  try { roomJoinOrCreate(); } catch (e) {}
   R.score = 0; CAM.off = null; CAM.h = R.h; setCam(CAM.mode); stickWords(); snapKite();
   REC.lastScore = 0; REC.counted = false; REC.bestTrick = ''; REC.bestTrickPts = 0; REC.saveT = 10;
   if (WAVES.on && !crewList().length) toWaves(true);   // con olas, sales en el pico de Puerto Siles, delante de la ola que viene
@@ -1161,6 +1181,39 @@ function peerData(id, v) {
   P.st = v.st; P.ch = v.ch; P.seen = performance.now();
   if (isNew || performance.now() - (NET.menuT || 0) > 1000) { NET.menuT = performance.now(); netMenu(); }
 }
+// LA SALA: el que lleva más rato navegando es el dueño; su viento y sus olas valen para todos.
+// (cada uno manda en sus datos «rc»: viento, fuerza, olas y la hora a la que salió a navegar)
+function roomHost() {
+  let best = null;
+  for (const P of Object.values(NET.peers)) {
+    if (!P.st || !P.st.p || !P.st.rc || performance.now() - P.seen > 8000) continue;
+    if (!best || P.st.rc.t < best.st.rc.t) best = P;
+  }
+  if (best && GAME.running && NET.myStart && NET.myStart < best.st.rc.t) return null;   // el dueño soy yo
+  return best;
+}
+function roomOpen() { return !!roomHost(); }
+function adoptRoom(H) {
+  const c = H.st.rc;
+  if (c.w !== WIND.id || c.kn !== WIND.kn) applyWind(c.w, c.kn);
+  if (!!c.o !== WAVES.on) wavesBtn(c.o ? 'on' : 'off');
+}
+function roomCfg() {
+  const H = roomHost();
+  for (const id of ['winds', 'waves']) $el(id).classList.toggle('locked', !!H);
+  $el('kn').disabled = !!H;
+  if (H) {
+    const c = H.st.rc; adoptRoom(H);
+    $el('roomLine').innerHTML = `🏠 Sala de <b>${esc(H.st.n || 'otro rider')}</b>: ${esc((WINDS.find(x => x[0] === c.w) || [, c.w])[1])} ${c.kn} nudos · ${c.o ? 'olas en Puerto Siles' : 'sin olas'}. ${GAME.running ? 'Navegáis con su viento y sus olas' : 'Entras con su viento y sus olas'}`;
+  } else $el('roomLine').innerHTML = !NET.connected ? '' : GAME.running ? '🏠 La sala es tuya: los que entren navegarán con tu viento y tus olas' : '🏠 Nadie navegando: al darle a «A navegar» creas tú la sala con tu viento y tus olas';
+}
+// al salir a navegar: si hay sala, con su viento y sus olas; si no, la creas tú
+function roomJoinOrCreate() {
+  const H = roomHost();
+  if (H) adoptRoom(H);
+  NET.myStart = Date.now();
+}
+setInterval(() => { try { roomCfg(); } catch (e) {} }, 1500);
 function peerGone(id) { const P = NET.peers[id]; if (!P) return; dropPeerVis(P); delete NET.peers[id]; netMenu(); }
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function netMenu() {
@@ -1184,7 +1237,7 @@ function netSend(dt) {
   const st = {
     n: myName(), m: GAME.mode, kb: GEAR.kb, fb: GEAR.fb, w: WING.design, p: GAME.running ? 1 : 0, sc: R.score,
     x: r2(nt.p.x), y: r2(nt.p.y), z: r2(nt.p.z), vx: r2(nt.v.x), vy: r2(nt.v.y), vz: r2(nt.v.z), q: [r3(nt.q.x), r3(nt.q.y), r3(nt.q.z), r3(nt.q.w)],
-    t: Math.round(Date.now() / 500),   // cambia siempre: así los demás saben que sigues ahí aunque estés quieto
+    t: Math.round(Date.now() / 500), rc: { w: WIND.id, kn: WIND.kn, o: WAVES.on ? 1 : 0, t: NET.myStart || Date.now() },   // cambia siempre: así los demás saben que sigues ahí aunque estés quieto
     yw: r2(R.yaw), sf: r2(R.surf || 0), pw: r2(R.power), v: r2(R.v), c: r2(R.charge), s: R.state === 'air' ? 1 : R.state === 'fallen' ? 2 : 0,
   };
   if (GAME.mode === 'kite') { const k = KITE.pos, q = KITE.g.quaternion; st.k = [r2(k.x), r2(k.y), r2(k.z)]; st.kq = [r3(q.x), r3(q.y), r3(q.z), r3(q.w)]; }
@@ -1391,7 +1444,7 @@ function frame() {
     GAME.t += dt;
     const t = GAME.t;
     U.uTime.value = t; skyMat.uniforms.uTime.value = t;
-    updateWind(t);
+    updateWind(Date.now() / 1000 % 100000);   // las rachas van con la hora: las mismas para todos
     updateWaves();
     const S = readSticks();
     updateRider(dt, S);
