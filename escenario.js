@@ -10,7 +10,7 @@ T.ColorManagement.enabled = true;   // vendor.js lo apaga para el juego de surf;
 const $ = id => document.getElementById(id);
 // versión: si el móvil tiene guardado un index.html viejo (de otra versión que juego.js), se recarga sin caché
 // (como mucho dos veces seguidas, para no entrar en bucle si la web aún no se ha actualizado)
-const KITE_VER = '25';
+const KITE_VER = '26';
 (() => {
   const m = document.querySelector('meta[name="kite-ver"]');
   try {

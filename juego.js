@@ -31,13 +31,15 @@ function updateWind(t) {
 
 // polar: qué parte del viento se aprovecha según el ángulo al viento (0 = proa al viento)
 function polar(twa) {
-  if (twa < 38) return 0;
-  if (twa < 60) return lerp(0, 0.85, (twa - 38) / 22);
-  if (twa < 100) return lerp(0.85, 1, (twa - 60) / 40);
+  if (twa < 12) return 0;                                   // ceñida casi hasta el viento
+  if (twa < 24) return lerp(0, 0.72, (twa - 12) / 12);
+  if (twa < 45) return lerp(0.72, 0.86, (twa - 24) / 21);
+  if (twa < 60) return lerp(0.86, 0.88, (twa - 45) / 15);
+  if (twa < 100) return lerp(0.88, 1, (twa - 60) / 40);
   if (twa < 150) return lerp(1, 0.8, (twa - 100) / 50);
   return lerp(0.8, 0.55, (twa - 150) / 30);
 }
-function sailName(twa) { return twa < 38 ? 'PROA AL VIENTO' : twa < 70 ? 'CEÑIDA' : twa < 110 ? 'TRAVÉS' : twa < 150 ? 'LARGO' : 'EMPOPADA'; }
+function sailName(twa) { return twa < 12 ? 'PROA AL VIENTO' : twa < 70 ? 'CEÑIDA' : twa < 110 ? 'TRAVÉS' : twa < 150 ? 'LARGO' : 'EMPOPADA'; }
 
 // =====================================================================================
 //  MODOS
@@ -557,7 +559,7 @@ function updateRider(dt, S) {
     if (!kite && !((R.surf || 0) > 0.5)) { const rdir = H.dot(WIND.E0) >= 0 ? 1 : -1; R.gyT = Math.abs(S.L.x) > 0.5 && Math.sign(S.L.x) !== rdir ? (R.gyT || 0) + dt : 0; if (R.gyT > 0.35 && !R.gybe) R.gybe = -R.s; }
     if (S.want && S.want !== R.s && !R.gybe) R.gybe = S.want;   // el piloto del menú
     // ceñir: el mando derecho fija el rumbo respecto al viento (abajo ceñir más, arriba ceñir menos; suelto, al través)
-    const twaT = 100 + 45 * clamp(S.C || 0, -1, 1);
+    const C0 = clamp(S.C || 0, -1, 1), twaT = 100 + (C0 < 0 ? 76 : 45) * C0;   // ceñir a tope: a 24° del viento
     let st;
     if (R.gybe) {   // trasluchada: primero hacia popa, luego al rumbo de la otra amura
       const hd = Math.atan2(D.z, D.x);
@@ -591,7 +593,7 @@ function updateRider(dt, S) {
     // inercia: acelera más despacio que frena; volando en el foil se planea y frena poco
     const acc = 0.6, dec = kite ? 0.9 : R.foilOn ? 0.45 : 1.1;
     R.v += (vt - R.v) * (vt > R.v ? acc : dec) * dt;
-    if (R.twa < 38 && !((R.surf || 0) > 0.5)) { R.v = Math.max(0, R.v - 1.4 * dt); if (R.v < 1.5) R.h += R.s * 0.7 * dt; }   // proa al viento: te para y te hace caer
+    if (R.twa < 12 && !((R.surf || 0) > 0.5)) { R.v = Math.max(0, R.v - 1.4 * dt); if (R.v < 1.5) R.h += R.s * 0.7 * dt; }   // proa al viento: te para y te hace caer
     if (M.foil) {
       if (!R.foilOn && R.v > M.takeoff + 0.3) { R.foilOn = true; say('¡VOLANDO!', 'clean', 1.2); }
       if (R.foilOn && R.v < M.takeoff - 0.9) { R.foilOn = false; say('AL AGUA', 'info', 1); sfxSplash(0.4); }
@@ -1433,7 +1435,7 @@ const clock = new T.Clock();
 function hud() {
   $('spd').innerHTML = `${(R.v / 0.5144).toFixed(0)}<em>NUDOS · ${(R.v * 3.6).toFixed(0)} KM/H</em>`;
   $('windLbl').textContent = `VIENTO ${WIND.name.toUpperCase()} ${WIND.knNow.toFixed(0)} KN`;
-  const sn = sailName(R.twa), el = $('sail'); el.textContent = R.state === 'fallen' ? 'EN EL AGUA' : MODES[GAME.mode].foil && R.state === 'ride' ? sn + (R.foilOn ? ' · VOLANDO' : '') : sn; el.className = R.twa < 38 ? 'nogo' : '';
+  const sn = sailName(R.twa), el = $('sail'); el.textContent = R.state === 'fallen' ? 'EN EL AGUA' : MODES[GAME.mode].foil && R.state === 'ride' ? sn + (R.foilOn ? ' · VOLANDO' : '') : sn; el.className = R.twa < 12 ? 'nogo' : '';
   $('place').textContent = zoneName(R.x, R.z);
   $('powM').style.width = (R.power * 100).toFixed(0) + '%';
   $('score').textContent = R.score.toLocaleString('es-ES');
